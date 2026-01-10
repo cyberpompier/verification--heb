@@ -1,0 +1,8 @@
+{
+  "name": "FireTrack Pro - Inventory Management",
+  "description": "A high-performance PWA for managing firefighting vehicle fleets, equipment inventory, and maintenance schedules with AI-powered fleet analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
