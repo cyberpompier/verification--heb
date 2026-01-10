@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Vehicle, VehicleStatus } from '../types';
+import { Vehicle, VehicleStatus } from '../types.ts';
 
 interface DashboardProps {
   vehicles: Vehicle[];

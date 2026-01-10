@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FireTrack Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/public/manifest.json">
     <meta name="theme-color" content="#dc2626">
-    <link rel="apple-touch-icon" href="/icon-192.png">
+    <link rel="apple-touch-icon" href="/public/icon-192.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body {
@@ -24,25 +24,28 @@
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/"
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
 </head>
 <body>
     <div id="root"></div>
+    <!-- Point d'entrée de l'application React -->
+    <script type="module" src="./index.tsx"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Utilisation d'un chemin relatif pour éviter les problèmes d'origine sur les sous-domaines/chemins
-                // On retire le leading slash pour que le chemin soit relatif à la position de index.html
-                navigator.serviceWorker.register('/service-worker.js')
+                // Utilisation du chemin absolu vers le fichier réel dans le dossier public
+                navigator.serviceWorker.register('/public/service-worker.js')
                     .then(reg => {
-                        console.log('FireTrack Pro SW enregistré avec succès. Scope:', reg.scope);
+                        console.log('FireTrack Pro SW enregistré ! Scope:', reg.scope);
                     })
                     .catch(err => {
-                        console.error('Erreur critique SW (Vérifiez si le fichier public/service-worker.js existe et est accessible) :', err);
+                        console.error('Erreur d\'enregistrement SW :', err);
                     });
             });
         }

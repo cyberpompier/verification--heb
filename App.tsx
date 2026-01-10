@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { Vehicle, VehicleStatus, Equipment, HistoryEntry } from './types';
-import { INITIAL_VEHICLES } from './constants';
-import Dashboard from './components/Dashboard';
-import VehicleCard from './components/VehicleCard';
-import VehicleDetails from './components/VehicleDetails';
-import { analyzeFleetStatus } from './services/geminiService';
+import { Vehicle, VehicleStatus, Equipment, HistoryEntry } from './types.ts';
+import { INITIAL_VEHICLES } from './constants.ts';
+import Dashboard from './components/Dashboard.tsx';
+import VehicleCard from './components/VehicleCard.tsx';
+import VehicleDetails from './components/VehicleDetails.tsx';
+import { analyzeFleetStatus } from './services/geminiService.ts';
 
 const App: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);

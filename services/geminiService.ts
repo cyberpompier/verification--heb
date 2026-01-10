@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Vehicle } from "../types";
+import { Vehicle } from "../types.ts";
 
 export const analyzeFleetStatus = async (vehicles: Vehicle[]): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
