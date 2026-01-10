@@ -15,6 +15,15 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentUser, setCurrentUser] = useState('Lieutenant Miller');
 
+  // Empêcher le scroll du body quand la modale est ouverte
+  useEffect(() => {
+    if (selectedVehicle) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+  }, [selectedVehicle]);
+
   const filteredVehicles = vehicles.filter(v => 
     v.callSign.toLowerCase().includes(searchTerm.toLowerCase()) || 
     v.type.toLowerCase().includes(searchTerm.toLowerCase())
@@ -140,16 +149,17 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen bg-slate-50 ${selectedVehicle ? 'overflow-hidden' : 'pb-20 md:pb-8'}`}>
-      <nav className="fire-gradient text-white pt-4 pb-2 px-4 sticky top-0 z-40 shadow-md">
+    <div className={`min-h-screen bg-slate-50 ${selectedVehicle ? 'h-screen' : 'pb-20 md:pb-8'}`}>
+      {/* Header compact et fixe */}
+      <nav className="fire-gradient text-white pt-3 pb-3 px-4 sticky top-0 z-[40] shadow-lg">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-black tracking-tighter uppercase">FireTrack Pro</h1>
-            <p className="hidden sm:block text-[9px] opacity-75 font-bold uppercase tracking-widest">{currentUser}</p>
+          <div className="flex flex-col">
+            <h1 className="text-lg sm:text-xl font-black tracking-tighter uppercase leading-none">FireTrack Pro</h1>
+            <p className="text-[8px] opacity-70 font-bold uppercase tracking-widest mt-0.5">{currentUser}</p>
           </div>
           <div className="flex items-center space-x-2">
              <select 
-               className="bg-white/10 text-white text-[10px] font-bold py-1.5 px-2 rounded-lg outline-none border border-white/20"
+               className="bg-white/10 text-white text-[9px] font-bold py-1 px-1.5 rounded-lg outline-none border border-white/20"
                value={currentUser}
                onChange={(e) => setCurrentUser(e.target.value)}
              >
@@ -160,7 +170,7 @@ const App: React.FC = () => {
              <button 
                 onClick={triggerFleetAnalysis}
                 disabled={isAnalyzing}
-                className="bg-white text-red-600 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center space-x-1.5 transition-all active:scale-95 disabled:opacity-50"
+                className="bg-white text-red-600 px-2 py-1 rounded-lg text-[9px] font-black uppercase flex items-center space-x-1 shadow-sm active:scale-95 disabled:opacity-50"
               >
                 {isAnalyzing ? (
                   <div className="animate-spin h-3 w-3 border-2 border-red-200 border-t-red-600 rounded-full" />
@@ -173,51 +183,42 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <div className="fire-gradient h-24 w-full relative z-0">
-        <div className="absolute inset-0 bg-black/10"></div>
-      </div>
+      {/* Zone de transition rouge (décorative) */}
+      <div className="fire-gradient h-16 w-full relative -mt-1" />
 
-      <main className="max-w-4xl mx-auto -mt-16 px-4 sm:px-6 relative z-10">
+      {/* Contenu principal décalé vers le haut */}
+      <main className="max-w-4xl mx-auto -mt-12 px-3 sm:px-6 relative z-10 pb-20">
         <Dashboard vehicles={vehicles} />
 
         {aiAnalysis && (
-          <div className="mb-6 bg-blue-50 border border-blue-100 rounded-2xl p-4 sm:p-6 relative overflow-hidden animate-fade-in shadow-sm">
+          <div className="mb-4 bg-blue-50 border border-blue-100 rounded-xl p-4 animate-fade-in shadow-sm">
             <div className="flex items-center space-x-2 mb-2">
               <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-              <h3 className="text-[10px] font-black text-blue-800 uppercase tracking-widest">Conseiller IA</h3>
+              <h3 className="text-[9px] font-black text-blue-800 uppercase tracking-widest">Conseiller IA</h3>
             </div>
-            <div className="text-blue-900 text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-medium">
+            <div className="text-blue-900 text-[11px] sm:text-xs leading-relaxed font-medium">
               {aiAnalysis}
             </div>
-            <button 
-              onClick={() => setAiAnalysis(null)}
-              className="mt-3 text-[10px] font-black text-blue-700 uppercase tracking-widest hover:underline"
-            >
-              Fermer l'audit
-            </button>
+            <button onClick={() => setAiAnalysis(null)} className="mt-2 text-[9px] font-black text-blue-700 uppercase hover:underline">Fermer l'audit</button>
           </div>
         )}
 
-        <div className="mb-6">
+        <div className="mb-4">
           <div className="relative">
             <input 
               type="text" 
               placeholder="Rechercher indicatif ou type..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white rounded-xl py-3 pl-11 pr-4 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all shadow-sm text-sm"
+              className="w-full bg-white rounded-xl py-2.5 pl-10 pr-4 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm text-sm"
             />
-            <svg className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {filteredVehicles.map(vehicle => (
-            <VehicleCard 
-              key={vehicle.id} 
-              vehicle={vehicle} 
-              onSelect={setSelectedVehicle} 
-            />
+            <VehicleCard key={vehicle.id} vehicle={vehicle} onSelect={setSelectedVehicle} />
           ))}
         </div>
       </main>
@@ -234,9 +235,9 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Hide mobile nav when detail view is active to prevent clashing and UI bugs */}
+      {/* Navigation basse masquée quand la modale est ouverte */}
       {!selectedVehicle && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-gray-100 flex justify-around items-center p-2 md:hidden z-[60] shadow-2xl">
+        <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 flex justify-around items-center p-2 md:hidden z-[30] shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)]">
           <NavItem active label="Parc" icon={<svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" /></svg>} />
           <NavItem label="Alertes" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>} />
           <NavItem label="Admin" icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>} />
