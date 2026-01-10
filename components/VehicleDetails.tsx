@@ -404,43 +404,74 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           )}
         </div>
 
-        {/* Détails Ressources Overlay (STABILISÉ POUR ÉVITER SUPERPOSITION) */}
+        {/* Détails Ressources Overlay (CORRIGÉ : VIGNETTE À GAUCHE ET TEXTE DÉCALÉ) */}
         {selectedDetailedEq && (
           <div className="absolute inset-0 z-[120] bg-white flex flex-col animate-slide-up">
-            {/* Header Fixe de l'overlay */}
-            <div className="p-3 border-b flex justify-between items-center bg-white flex-shrink-0">
-              <h3 className="text-[10px] font-black uppercase tracking-widest truncate mr-4">{selectedDetailedEq.name}</h3>
+            {/* Header Fixe de l'overlay mis à jour */}
+            <div className="p-3 border-b flex items-center bg-white flex-shrink-0 shadow-sm">
+              {/* Vignette à gauche */}
+              <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-100 flex-shrink-0 flex items-center justify-center overflow-hidden mr-3">
+                {selectedDetailedEq.thumbnailUrl ? (
+                  <img src={selectedDetailedEq.thumbnailUrl} className="w-full h-full object-cover" alt={selectedDetailedEq.name} />
+                ) : (
+                  <svg className="w-6 h-6 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M20 7l-8-4-8 4m16 0l-8 4" strokeWidth="2"/>
+                  </svg>
+                )}
+              </div>
+              
+              {/* Texte décalé (Titre + Catégorie) */}
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[11px] font-black uppercase tracking-tight text-slate-900 truncate">
+                  {selectedDetailedEq.name}
+                </h3>
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mt-0.5">
+                  {selectedDetailedEq.category}
+                </span>
+              </div>
+
+              {/* Bouton de fermeture à droite */}
               <button 
                 onClick={() => setDetailedEqId(null)} 
-                className="p-1.5 bg-gray-100 rounded-full text-gray-400 active:bg-gray-200"
+                className="p-2 bg-slate-100 rounded-full text-slate-400 active:bg-slate-200 ml-2"
+                aria-label="Fermer"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            {/* Contenu Défilant de l'overlay */}
+            {/* Contenu Défilant */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-white">
                <section>
-                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3">Statut & Notes</h4>
-                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[8px] font-black uppercase text-slate-400">Condition</span>
-                      <span className="text-[9px] font-black text-slate-800 uppercase">{selectedDetailedEq.condition}</span>
+                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">État & Rapports</h4>
+                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase text-slate-400">Condition Générale</span>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${selectedDetailedEq.condition === 'Bon' ? 'text-green-600 bg-green-100' : 'text-orange-600 bg-orange-100'}`}>
+                        {selectedDetailedEq.condition}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase text-slate-400">Dernier Contrôle</span>
+                      <span className="text-[10px] font-black text-slate-800">{selectedDetailedEq.lastChecked}</span>
                     </div>
                     {selectedDetailedEq.notes && (
-                      <p className="mt-2 text-[10px] text-slate-600 leading-relaxed border-t border-slate-100 pt-2">{selectedDetailedEq.notes}</p>
+                      <div className="mt-2 pt-3 border-t border-slate-200">
+                        <span className="text-[8px] font-black text-slate-400 uppercase block mb-1">Notes techniques</span>
+                        <p className="text-[11px] text-slate-600 leading-relaxed italic">"{selectedDetailedEq.notes}"</p>
+                      </div>
                     )}
                  </div>
                </section>
 
                <section>
-                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3">Vidéo de Formation</h4>
+                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">Vidéo de Formation</h4>
                  {selectedDetailedEq.videoUrl ? (
                    <div className="space-y-3">
                      {getYouTubeEmbedUrl(selectedDetailedEq.videoUrl) ? (
-                       <div className="aspect-video bg-black rounded-xl overflow-hidden shadow-md border-2 border-slate-100">
+                       <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-xl border-2 border-slate-100">
                          <iframe 
                            src={getYouTubeEmbedUrl(selectedDetailedEq.videoUrl)!} 
                            className="w-full h-full" 
@@ -449,27 +480,36 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                          />
                        </div>
                      ) : (
-                       <div className="bg-slate-50 p-4 rounded-xl text-center border">
-                          <p className="text-[9px] font-bold text-slate-500 mb-2 truncate">{selectedDetailedEq.videoUrl}</p>
-                          <a href={selectedDetailedEq.videoUrl} target="_blank" className="inline-block bg-red-600 text-white text-[9px] px-6 py-2 rounded-full font-black uppercase shadow-lg">Lancer le lien externe</a>
+                       <div className="bg-slate-50 p-6 rounded-2xl text-center border-2 border-dashed border-slate-200">
+                          <p className="text-[10px] font-bold text-slate-400 mb-3 truncate">{selectedDetailedEq.videoUrl}</p>
+                          <a href={selectedDetailedEq.videoUrl} target="_blank" className="inline-flex items-center space-x-2 bg-red-600 text-white text-[10px] px-8 py-3 rounded-full font-black uppercase shadow-lg active:scale-95 transition-transform">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"/></svg>
+                            <span>Voir le tutoriel</span>
+                          </a>
                        </div>
                      )}
                    </div>
                  ) : (
-                   <div className="py-8 text-center bg-slate-50 border-2 border-dashed rounded-xl text-[9px] font-black text-slate-300 uppercase">Aucune vidéo associée</div>
+                   <div className="py-10 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase tracking-widest">Aucune vidéo associée</div>
                  )}
                </section>
 
                <section>
-                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3">Documentation technique</h4>
+                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">Documentation technique</h4>
                  {(selectedDetailedEq.documents || []).length === 0 ? (
-                   <div className="py-8 text-center bg-slate-50 border-2 border-dashed rounded-xl text-[9px] font-black text-slate-300 uppercase italic">Aucun document</div>
+                   <div className="py-10 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase tracking-widest">Aucun document joint</div>
                  ) : (
-                   <div className="space-y-2">
+                   <div className="grid grid-cols-1 gap-2">
                      {selectedDetailedEq.documents.map(doc => (
-                       <a key={doc.id} href={doc.url} target="_blank" className="flex items-center p-3 rounded-xl bg-slate-50 border border-slate-100 text-[10px] font-bold text-slate-700 hover:bg-slate-100 transition-colors shadow-sm">
-                         <svg className="w-4 h-4 mr-2 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth="2"/></svg>
-                         <span className="truncate">{doc.name}</span>
+                       <a key={doc.id} href={doc.url} target="_blank" className="flex items-center p-4 rounded-2xl bg-white border border-slate-100 shadow-sm hover:border-red-200 transition-all active:scale-[0.98]">
+                         <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center mr-3 flex-shrink-0">
+                           <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth="2"/></svg>
+                         </div>
+                         <div className="flex-1 min-w-0">
+                           <span className="text-[10px] font-black text-slate-800 truncate block">{doc.name}</span>
+                           <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Format PDF / Manuel</span>
+                         </div>
+                         <svg className="w-4 h-4 text-slate-300 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3"/></svg>
                        </a>
                      ))}
                    </div>
@@ -477,11 +517,11 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                </section>
             </div>
 
-            {/* Pied de page Fixe de l'overlay */}
-            <div className="p-3 border-t bg-slate-50 flex-shrink-0">
+            {/* Pied de page Fixe */}
+            <div className="p-4 border-t bg-slate-50 flex-shrink-0">
               <button 
                 onClick={() => setDetailedEqId(null)} 
-                className="w-full bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase shadow-lg active:scale-95 transition-transform"
+                className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.1em] shadow-xl active:scale-95 transition-all"
               >
                 Retour à l'inventaire
               </button>
