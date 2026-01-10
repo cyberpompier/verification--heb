@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
     <title>FireTrack Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="manifest" href="public/manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#dc2626">
-    <link rel="apple-touch-icon" href="public/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body {
@@ -42,7 +42,7 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('public/service-worker.js')
+                navigator.serviceWorker.register('/service-worker.js')
                     .then(reg => {
                         console.log('FireTrack Pro SW registered successfully! Scope:', reg.scope);
                     })
