@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument } from '../types';
 
@@ -191,17 +190,17 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
               {!isAdding && (
                 <div className="relative mb-2">
-                  <input type="text" placeholder="Filtrer..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-xs py-2 pl-8 pr-4 bg-gray-50 border border-gray-100 rounded-lg outline-none" />
+                  <input type="text" placeholder="Filtrer..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-[16px] md:text-xs py-2 pl-8 pr-4 bg-gray-50 border border-gray-100 rounded-lg outline-none" />
                   <svg className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5"/></svg>
                 </div>
               )}
 
               {isAdding && (
                 <form onSubmit={handleAddSubmit} className="bg-slate-50 p-3 rounded-xl border space-y-2 mb-4">
-                  <input type="text" placeholder="Nom" required className="w-full text-xs p-2 rounded-md border" value={newEq.name} onChange={e => setNewEq({...newEq, name: e.target.value})} />
+                  <input type="text" placeholder="Nom" required className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={newEq.name} onChange={e => setNewEq({...newEq, name: e.target.value})} />
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="Catégorie" required className="text-xs p-2 rounded-md border" value={newEq.category} onChange={e => setNewEq({...newEq, category: e.target.value})} />
-                    <input type="number" placeholder="Qté" required min="1" className="text-xs p-2 rounded-md border" value={newEq.quantity} onChange={e => setNewEq({...newEq, quantity: parseInt(e.target.value) || 1})} />
+                    <input type="text" placeholder="Catégorie" required className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.category} onChange={e => setNewEq({...newEq, category: e.target.value})} />
+                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.quantity} onChange={e => setNewEq({...newEq, quantity: parseInt(e.target.value) || 1})} />
                   </div>
                   <button type="submit" className="w-full bg-slate-900 text-white py-2 rounded-md text-[10px] font-black uppercase tracking-widest">Enregistrer</button>
                 </form>
@@ -249,7 +248,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                       {reportingAnomalyId === item.id && (
                         <div className="mt-3 bg-white p-3 rounded-xl border-2 border-orange-200 space-y-2 animate-slide-up">
                           <div className="flex justify-between items-center"><h6 className="text-[8px] font-black uppercase text-orange-600">Nouvelle Anomalie</h6><button onClick={() => setReportingAnomalyId(null)}><svg className="w-3 h-3 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button></div>
-                          <textarea placeholder="Description rapide..." className="w-full text-[10px] p-2 bg-slate-50 border rounded-lg h-12 outline-none" value={tempAnomaly} onChange={e => setTempAnomaly(e.target.value)} />
+                          <textarea placeholder="Description rapide..." className="w-full text-[16px] md:text-[10px] p-2 bg-slate-50 border rounded-lg h-12 outline-none" value={tempAnomaly} onChange={e => setTempAnomaly(e.target.value)} />
                           <div className="flex items-center justify-between text-[8px] font-black text-slate-400 uppercase">
                             <span>Manquants</span>
                             <div className="flex items-center space-x-2">
@@ -274,7 +273,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                <div className="flex justify-between items-center mb-2"><h4 className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Journal</h4><button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[9px] font-black text-red-600 uppercase">Ajouter</button></div>
                {isAddingLog && (
                   <form onSubmit={handleAddLogSubmit} className="bg-slate-50 p-3 rounded-lg border space-y-2 relative z-10">
-                    <textarea placeholder="Note rapide..." className="w-full text-[10px] p-2 rounded border h-12 outline-none" value={newLog.description} onChange={e => setNewLog({...newLog, description: e.target.value})} />
+                    <textarea placeholder="Note rapide..." className="w-full text-[16px] md:text-[10px] p-2 rounded border h-12 outline-none" value={newLog.description} onChange={e => setNewLog({...newLog, description: e.target.value})} />
                     <button type="submit" className="w-full bg-slate-900 text-white py-1.5 rounded text-[9px] font-black uppercase tracking-widest">Noter</button>
                   </form>
                )}

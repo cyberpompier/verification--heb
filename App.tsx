@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry } from './types.ts';
 import { INITIAL_VEHICLES } from './constants.ts';
@@ -159,7 +158,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center space-x-2">
              <select 
-               className="bg-white/10 text-white text-[9px] font-bold py-1 px-1.5 rounded-lg outline-none border border-white/20"
+               className="bg-white/10 text-white text-[16px] font-bold py-1 px-1.5 rounded-lg outline-none border border-white/20"
                value={currentUser}
                onChange={(e) => setCurrentUser(e.target.value)}
              >
@@ -210,7 +209,7 @@ const App: React.FC = () => {
               placeholder="Rechercher indicatif ou type..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white rounded-xl py-2.5 pl-10 pr-4 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm text-sm"
+              className="w-full bg-white rounded-xl py-2.5 pl-10 pr-4 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-sm text-base md:text-sm"
             />
             <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
           </div>
