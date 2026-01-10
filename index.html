@@ -42,7 +42,7 @@
                 // Using a relative path without a leading slash ensures the browser
                 // interprets the script as being on the same origin as the index.html.
                 // Note: A Service Worker in the /public/ folder has a default scope of /public/.
-                navigator.serviceWorker.register('public/service-worker.js')
+                navigator.serviceWorker.register('/service-worker.js')
                     .then(reg => {
                         console.log('FireTrack Pro SW registered successfully! Scope:', reg.scope);
                     })
