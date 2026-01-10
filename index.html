@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FireTrack Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="manifest" href="/public/manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#dc2626">
-    <link rel="apple-touch-icon" href="/public/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body {
@@ -35,17 +35,23 @@
 <body>
     <div id="root"></div>
     <!-- Point d'entrée de l'application React -->
-    <script type="module" src="./index.tsx"></script>
+    <script type="module" src="index.tsx"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Utilisation du chemin absolu vers le fichier réel dans le dossier public
-                navigator.serviceWorker.register('/public/service-worker.js')
+                // Using a relative path without a leading slash ensures the browser
+                // interprets the script as being on the same origin as the index.html.
+                // Note: A Service Worker in the /public/ folder has a default scope of /public/.
+                navigator.serviceWorker.register('public/service-worker.js')
                     .then(reg => {
-                        console.log('FireTrack Pro SW enregistré ! Scope:', reg.scope);
+                        console.log('FireTrack Pro SW registered successfully! Scope:', reg.scope);
                     })
                     .catch(err => {
-                        console.error('Erreur d\'enregistrement SW :', err);
+                        console.error('Service Worker registration failed:', err.message);
+                        // Log more details if origin mismatch is suspected
+                        if (err.message.includes('origin')) {
+                          console.error('Origin Mismatch detected. Ensure the script is served from the same domain and port.');
+                        }
                     });
             });
         }
