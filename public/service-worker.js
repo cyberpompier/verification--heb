@@ -3,6 +3,7 @@ const CACHE_NAME = 'firetrack-v1';
 const ASSETS = [
   '/',
   '/index.html',
+  '/public/manifest.json',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
