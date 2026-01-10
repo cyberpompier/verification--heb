@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FireTrack Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="manifest" href="/public/manifest.json">
+    <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#dc2626">
-    <link rel="apple-touch-icon" href="/public/icon-192.png">
+    <link rel="apple-touch-icon" href="/icon-192.png">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body {
@@ -35,14 +35,14 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                // Utilisation du chemin absolu exact vers le dossier public.
-                // Note : Par défaut, le périmètre (scope) est limité au dossier du script (/public/).
-                navigator.serviceWorker.register('/public/service-worker.js')
+                // Utilisation d'un chemin relatif pour éviter les problèmes d'origine sur les sous-domaines/chemins
+                // On retire le leading slash pour que le chemin soit relatif à la position de index.html
+                navigator.serviceWorker.register('/service-worker.js')
                     .then(reg => {
-                        console.log('FireTrack Pro Service Worker enregistré avec succès ! Périmètre :', reg.scope);
+                        console.log('FireTrack Pro SW enregistré avec succès. Scope:', reg.scope);
                     })
                     .catch(err => {
-                        console.error('Échec de l\'enregistrement du Service Worker :', err);
+                        console.error('Erreur critique SW (Vérifiez si le fichier public/service-worker.js existe et est accessible) :', err);
                     });
             });
         }
