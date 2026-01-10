@@ -2,7 +2,7 @@
 {
   "name": "FireTrack Pro",
   "short_name": "FireTrack",
-  "description": "Firefighting Vehicle Inventory Management",
+  "description": "Système de gestion d'inventaire pour véhicules de secours",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
@@ -12,7 +12,13 @@
       "src": "/public/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/public/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
     },
     {
       "src": "/public/icon-512.png",
