@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0, viewport-fit=cover">
     <title>FireTrack Pro</title>
+    
+    <!-- PWA Meta Tags pour iOS -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FireTrack">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#dc2626">
@@ -13,11 +19,14 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
+            /* Support pour l'encoche (notch) iOS */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
         }
         .fire-gradient {
             background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
         }
-        /* Désactivation du zoom sur focus pour les champs de saisie */
+        /* Empêcher le zoom automatique sur iOS sans casser l'accessibilité */
         input, select, textarea {
             font-size: 16px !important;
         }
@@ -37,17 +46,18 @@
 </head>
 <body>
     <div id="root"></div>
-    <!-- Point d'entrée de l'application React -->
+    <!-- Chargement du module principal -->
     <script type="module" src="index.tsx"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
+                // Enregistrement à la racine pour couvrir tout le scope
                 navigator.serviceWorker.register('/service-worker.js')
                     .then(reg => {
-                        console.log('FireTrack Pro SW registered successfully! Scope:', reg.scope);
+                        console.log('FireTrack Pro SW registered!');
                     })
                     .catch(err => {
-                        console.error('Service Worker registration failed:', err.message);
+                        console.error('SW registration failed:', err);
                     });
             });
         }

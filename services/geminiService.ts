@@ -1,9 +1,15 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Vehicle } from "../types.ts";
 
 export const analyzeFleetStatus = async (vehicles: Vehicle[]): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Vérification de la présence de la clé API pour éviter un crash de l'application
+  const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : '';
+  
+  if (!apiKey) {
+    return "Configuration de l'IA manquante (Clé API non trouvée).";
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = `En tant qu'Analyste de Parc pour les Sapeurs-Pompiers, analyse l'inventaire suivant et fournis un résumé concis de la disponibilité opérationnelle, des risques de maintenance potentiels et des recommandations d'allocation de ressources :
   ${JSON.stringify(vehicles, null, 2)}`;
 
