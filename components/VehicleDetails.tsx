@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument } from '../types';
 
@@ -36,8 +37,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [editingEqId, setEditingEqId] = useState<string | null>(null);
   const [isAddingLog, setIsAddingLog] = useState(false);
   const [reportingAnomalyId, setReportingAnomalyId] = useState<string | null>(null);
+  const [confirmClearAnomalyId, setConfirmClearAnomalyId] = useState<string | null>(null);
   const [tempAnomaly, setTempAnomaly] = useState("");
-  const [tempMissingQty, setTempMissingQty] = useState(0);
+  const [tempAnomalyTags, setTempAnomalyTags] = useState<string[]>([]);
+  const [tempMissingQuantity, setTempMissingQuantity] = useState(1);
   const [equipmentSearch, setEquipmentSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [detailedEqId, setDetailedEqId] = useState<string | null>(null);
@@ -52,13 +55,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   });
 
   const [editEqForm, setEditEqForm] = useState<Partial<Equipment>>({});
-  const [newDoc, setNewDoc] = useState({ name: '', url: '' });
+  const [newDoc, setNewDoc] = useState<{ name: string; url: string; type: EquipmentDocument['type'] }>({ name: '', url: '', type: 'link' });
 
   const [newLog, setNewLog] = useState<{
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
 
-  // Récupérer tous les emplacements uniques présents dans le véhicule
   const uniqueLocations = useMemo(() => {
     const locs = new Set(vehicle.equipment.map(e => e.location));
     return Array.from(locs).filter(l => !!l).sort();
@@ -66,8 +68,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const filteredAndSortedEquipment = useMemo(() => {
     let items = [...vehicle.equipment];
-    
-    // Filtre par texte
     if (equipmentSearch.trim()) {
       const query = equipmentSearch.toLowerCase();
       items = items.filter(item => 
@@ -76,30 +76,22 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         item.location.toLowerCase().includes(query)
       );
     }
-
-    // Filtre par emplacement sélectionné
     if (selectedLocation) {
       items = items.filter(item => item.location === selectedLocation);
     }
 
-    return items.sort((a, b) => a.name.localeCompare(b.name));
-  }, [vehicle.equipment, equipmentSearch, selectedLocation]);
+    return items.sort((a, b) => {
+      const aChecked = a.lastChecked === today;
+      const bChecked = b.lastChecked === today;
+      if (aChecked !== bChecked) return aChecked ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [vehicle.equipment, equipmentSearch, selectedLocation, today]);
 
   const selectedDetailedEq = useMemo(() => 
     vehicle.equipment.find(e => e.id === detailedEqId),
     [vehicle.equipment, detailedEqId]
   );
-
-  const getYouTubeEmbedUrl = (url: string) => {
-    if (!url) return null;
-    let videoId = null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
-    const match = url.match(regExp);
-    if (match && match[2].length === 11) {
-      videoId = match[2];
-    }
-    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
-  };
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,51 +110,55 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     if (!editingEqId || !editEqForm.name) return;
     onUpdateEquipment(vehicle.id, editingEqId, editEqForm);
     setEditingEqId(null);
+    setEditEqForm({});
   };
 
-  const handleAddLogSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLog.description) return;
-    onAddHistoryEntry(vehicle.id, newLog);
-    setIsAddingLog(false);
-    setNewLog({ type: 'note', description: '', date: today, equipmentId: '' });
+  const startEditing = (item: Equipment) => {
+    setEditingEqId(item.id);
+    setEditEqForm(item);
+    setIsAdding(false);
   };
 
-  const addDocumentToForm = (isEditing: boolean) => {
+  const addDocToForm = () => {
     if (!newDoc.name || !newDoc.url) return;
-    const doc: EquipmentDocument = { id: Math.random().toString(36).substr(2, 5), name: newDoc.name, url: newDoc.url, type: 'link' };
-    
-    if (isEditing) {
+    const doc: EquipmentDocument = { ...newDoc, id: Math.random().toString(36).substr(2, 5) };
+    if (editingEqId) {
       setEditEqForm(prev => ({ ...prev, documents: [...(prev.documents || []), doc] }));
     } else {
       setNewEq(prev => ({ ...prev, documents: [...(prev.documents || []), doc] }));
     }
-    setNewDoc({ name: '', url: '' });
+    setNewDoc({ name: '', url: '', type: 'link' });
   };
 
-  const removeDocumentFromForm = (docId: string, isEditing: boolean) => {
-    if (isEditing) {
-      setEditEqForm(prev => ({ ...prev, documents: prev.documents?.filter(d => d.id !== docId) }));
+  const removeDocFromForm = (id: string) => {
+    if (editingEqId) {
+      setEditEqForm(prev => ({ ...prev, documents: (prev.documents || []).filter(d => d.id !== id) }));
     } else {
-      setNewEq(prev => ({ ...prev, documents: prev.documents?.filter(d => d.id !== docId) }));
+      setNewEq(prev => ({ ...prev, documents: (prev.documents || []).filter(d => d.id !== id) }));
     }
   };
 
+  const toggleAnomalyTag = (tag: string) => {
+    setTempAnomalyTags(prev => 
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
+  };
+
   const handleSaveAnomaly = (eqId: string) => {
-    const item = vehicle.equipment.find(e => e.id === eqId);
-    if (!item) return;
-    const newQuantity = Math.max(0, item.quantity - tempMissingQty);
-    let finalAnomalyText = tempAnomaly;
-    if (tempMissingQty > 0) finalAnomalyText = `${tempMissingQty} manquant(s). ${tempAnomaly}`;
+    let anomalyText = tempAnomaly;
+    if (tempAnomalyTags.includes('Manquant')) {
+      anomalyText = `[x${tempMissingQuantity} Manquant(s)] ${anomalyText}`.trim();
+    }
     onUpdateEquipment(vehicle.id, eqId, { 
-      anomaly: finalAnomalyText || undefined, 
-      lastChecked: today, 
-      quantity: newQuantity,
-      condition: (finalAnomalyText || newQuantity < item.quantity) ? 'À remplacer' : 'Bon' 
+      anomaly: anomalyText || (tempAnomalyTags.length > 0 ? "Signalé" : undefined), 
+      anomalyTags: tempAnomalyTags,
+      lastChecked: today,
+      condition: 'À remplacer'
     });
     setReportingAnomalyId(null);
     setTempAnomaly("");
-    setTempMissingQty(0);
+    setTempAnomalyTags([]);
+    setTempMissingQuantity(1);
   };
 
   const handleEquipmentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,12 +168,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       reader.onloadend = () => {
         const base64 = reader.result as string;
         if (editingEqIdForImage) {
-           onUpdateEquipment(vehicle.id, editingEqIdForImage, { thumbnailUrl: base64 });
-           setEditingEqIdForImage(null);
+            onUpdateEquipment(vehicle.id, editingEqIdForImage, { thumbnailUrl: base64 });
+            setEditingEqIdForImage(null);
         } else if (editingEqId) {
-           setEditEqForm(prev => ({ ...prev, thumbnailUrl: base64 }));
+            setEditEqForm(prev => ({ ...prev, thumbnailUrl: base64 }));
         } else {
-           setNewEq(prev => ({ ...prev, thumbnailUrl: base64 }));
+            setNewEq(prev => ({ ...prev, thumbnailUrl: base64 }));
         }
       };
       reader.readAsDataURL(file);
@@ -189,235 +185,288 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     equipmentFileInputRef.current?.click();
   };
 
-  const getHistoryIcon = (type: HistoryEntry['type']) => {
-    switch(type) {
-      case 'status': return <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 11H9v-2h2v2zm0-4H9V5h2v4z"/></svg></div>;
-      case 'maintenance': return <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-orange-600"><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"/></svg></div>;
-      default: return <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600"><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 00-2.828 0z"/></svg></div>;
+  const handleAddLogSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLog.description) return;
+    onAddHistoryEntry(vehicle.id, newLog);
+    setIsAddingLog(false);
+    setNewLog({ type: 'note', description: '', date: today, equipmentId: '' });
+  };
+
+  const inputClasses = "w-full text-sm p-3 rounded-xl bg-slate-50 border-2 border-slate-100 font-bold outline-none ring-red-500/20 focus:ring-2 focus:border-red-500 text-slate-900 placeholder-slate-400 transition-all";
+
+  const getEntryColorClasses = (status?: string) => {
+    switch (status) {
+      case 'success': return 'border-green-300 bg-green-50/50 shadow-green-100';
+      case 'danger': return 'border-red-300 bg-red-50/50 shadow-red-100';
+      case 'warning': return 'border-orange-300 bg-orange-50/50 shadow-orange-100';
+      case 'info': return 'border-blue-300 bg-blue-50/50 shadow-blue-100';
+      default: return 'border-slate-200 bg-white shadow-slate-100';
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white w-full max-w-xl h-[92vh] sm:h-auto sm:max-h-[85vh] sm:rounded-3xl overflow-hidden flex flex-col animate-slide-up shadow-2xl relative">
+    <div className="fixed inset-0 bg-black/80 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md animate-fade-in">
+      <div className="bg-slate-100 w-full max-w-xl h-[94vh] sm:h-auto sm:max-h-[88vh] sm:rounded-3xl overflow-hidden flex flex-col shadow-2xl relative">
         
-        {/* Header Compact Principal */}
+        {/* Header Photo */}
         <div className="relative h-28 sm:h-40 flex-shrink-0 group">
           <img src={vehicle.imageUrl} alt={vehicle.callSign} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-          <div className="absolute bottom-3 left-4 text-white">
-            <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-none">{vehicle.callSign}</h2>
-            <p className="opacity-70 text-[9px] sm:text-xs font-bold uppercase tracking-widest mt-0.5">{vehicle.type}</p>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
+          <div className="absolute bottom-3 left-5 text-white">
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-none uppercase">{vehicle.callSign}</h2>
+            <p className="opacity-70 text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] mt-1">{vehicle.type}</p>
           </div>
-          <button onClick={onClose} className="absolute top-3 right-3 p-1.5 bg-black/30 backdrop-blur-md rounded-full text-white"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg></button>
+          <button onClick={onClose} className="absolute top-3 right-3 p-2 bg-black/40 backdrop-blur-xl rounded-full text-white active:scale-90 transition-all border border-white/20">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
         </div>
 
-        {/* Navigation Onglets */}
-        <div className="flex border-b bg-gray-50 flex-shrink-0 overflow-x-auto scrollbar-hide sticky top-0 z-10">
-          <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} label="Infos" />
+        {/* Tabs */}
+        <div className="flex bg-white border-b border-slate-200 flex-shrink-0 sticky top-0 z-10">
+          <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} label="Général" />
           <TabButton active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label={`Inventaire (${vehicle.equipment.length})`} />
           <TabButton active={activeTab === 'history'} onClick={() => setActiveTab('history')} label="Journal" />
         </div>
 
-        {/* Contenu principal défilant */}
-        <div className="flex-1 overflow-y-auto p-4 bg-white pb-6">
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-y-auto p-4 bg-slate-100 pb-12">
           {activeTab === 'info' && (
             <div className="space-y-6 animate-fade-in">
               <section>
-                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3">Statut Actuel</h4>
-                <div className="grid grid-cols-2 gap-2">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Disponibilité Actuelle</h4>
+                <div className="grid grid-cols-2 gap-3">
                   {Object.values(VehicleStatus).map(status => (
-                    <button key={status} onClick={() => onUpdateStatus(vehicle.id, status)} className={`py-2 px-3 rounded-lg text-[16px] md:text-[10px] font-bold border transition-all ${vehicle.status === status ? 'bg-red-50 border-red-500 text-red-700 shadow-sm' : 'bg-white border-gray-100 text-gray-400'}`}>{status}</button>
+                    <button 
+                      key={status} 
+                      onClick={() => onUpdateStatus(vehicle.id, status)} 
+                      className={`py-4 px-3 rounded-2xl text-[11px] font-black border-2 transition-all shadow-sm ${vehicle.status === status ? 'bg-red-600 border-red-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                    >
+                      {status}
+                    </button>
                   ))}
                 </div>
               </section>
-              <section className="grid grid-cols-2 gap-3">
+              <section className="grid grid-cols-2 gap-4">
                 <InfoBox label="Kilométrage" value={`${vehicle.mileage.toLocaleString()} km`} />
-                <InfoBox label="Localisation" value={vehicle.location} />
+                <InfoBox label="Secteur" value={vehicle.location} />
+                <InfoBox label="Capacité" value={`${vehicle.crewCapacity} pers.`} />
+                <InfoBox label="Révision" value={vehicle.lastService} />
               </section>
             </div>
           )}
 
           {activeTab === 'inventory' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="flex justify-between items-center mb-1">
-                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Check-list</h4>
-                <button 
-                  onClick={() => { setIsAdding(!isAdding); setEditingEqId(null); }} 
-                  className="text-[9px] font-black px-2 py-1 rounded bg-red-600 text-white uppercase"
-                >
-                  {isAdding ? 'Annuler' : 'Ajouter'}
-                </button>
+            <div className="space-y-5 animate-fade-in">
+              {/* Search and Filters */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <div className="relative flex-1">
+                    <input type="text" placeholder="Rechercher..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-xs py-3 pl-10 pr-4 bg-white border-2 border-slate-200 rounded-2xl outline-none focus:border-red-600 transition-all font-bold shadow-sm text-slate-900" />
+                    <svg className="w-4 h-4 text-slate-300 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="3"/></svg>
+                  </div>
+                  <button onClick={() => { setIsAdding(!isAdding); setEditingEqId(null); }} className={`p-3 rounded-2xl border-2 transition-all shadow-sm ${isAdding ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-red-600 hover:border-red-600'}`}>
+                    <svg className={`w-5 h-5 transition-transform ${isAdding ? 'rotate-45' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="3"/></svg>
+                  </button>
+                </div>
+
+                {/* Location Tags Picker */}
+                <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
+                  <button 
+                    onClick={() => setSelectedLocation(null)}
+                    className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all border-2 shadow-sm ${!selectedLocation ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}
+                  >
+                    Tous
+                  </button>
+                  {uniqueLocations.map(loc => (
+                    <button 
+                      key={loc}
+                      onClick={() => setSelectedLocation(loc)}
+                      className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all border-2 shadow-sm ${selectedLocation === loc ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {(!isAdding && !editingEqId) && (
-                <div className="space-y-2 mb-2">
-                  {/* Barre de Recherche */}
-                  <div className="relative">
-                    <input type="text" placeholder="Filtrer par nom, type..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-[16px] md:text-xs py-2 pl-8 pr-4 bg-gray-50 border border-gray-100 rounded-lg outline-none" />
-                    <svg className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5"/></svg>
-                  </div>
+              {/* Add/Edit Forms */}
+              {(isAdding || editingEqId) && (
+                <form onSubmit={editingEqId ? handleEditSubmit : handleAddSubmit} className="bg-white p-5 rounded-3xl border-2 border-slate-200 space-y-4 shadow-xl animate-slide-up">
+                  <h4 className="text-[10px] font-black text-red-600 uppercase tracking-widest">{editingEqId ? 'Modifier matériel' : 'Nouveau matériel'}</h4>
                   
-                  {/* Sélecteur d'Emplacement (horizontal scroll chips) */}
-                  <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
-                    <button 
-                      onClick={() => setSelectedLocation(null)}
-                      className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tight transition-all border ${!selectedLocation ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-gray-100'}`}
-                    >
-                      Tous
-                    </button>
-                    {uniqueLocations.map(loc => (
-                      <button 
-                        key={loc}
-                        onClick={() => setSelectedLocation(selectedLocation === loc ? null : loc)}
-                        className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tight transition-all border ${selectedLocation === loc ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white text-slate-400 border-gray-100'}`}
-                      >
-                        {loc}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Formulaire AJOUT */}
-              {isAdding && (
-                <form onSubmit={handleAddSubmit} className="bg-slate-50 p-3 rounded-xl border-2 border-red-100 space-y-3 mb-4 animate-slide-up">
-                  <div className="flex items-center space-x-3">
-                    <button type="button" onClick={() => triggerImageUpload()} className="w-14 h-14 bg-white border border-dashed border-red-300 rounded-lg flex items-center justify-center overflow-hidden">
-                      {newEq.thumbnailUrl ? <img src={newEq.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-5 h-5 text-red-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5"/></svg>}
+                  {/* Base Info */}
+                  <div className="flex items-center space-x-4">
+                    <button type="button" onClick={() => triggerImageUpload(editingEqId)} className="w-16 h-16 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center overflow-hidden active:bg-slate-100">
+                      {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? 
+                        <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className="w-full h-full object-cover" /> : 
+                        <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="3"/></svg>
+                      }
                     </button>
                     <div className="flex-1">
-                      <input type="text" placeholder="Nom de l'équipement" required className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={newEq.name} onChange={e => setNewEq({...newEq, name: e.target.value})} />
+                      <input 
+                        type="text" 
+                        placeholder="Nom de l'équipement" 
+                        required 
+                        className={inputClasses}
+                        value={editingEqId ? (editEqForm.name || '') : newEq.name} 
+                        onChange={e => editingEqId ? setEditEqForm({...editEqForm, name: e.target.value}) : setNewEq({...newEq, name: e.target.value})} 
+                      />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="Catégorie (ex: EPI)" required className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.category} onChange={e => setNewEq({...newEq, category: e.target.value})} />
-                    <input type="text" placeholder="Emplacement (ex: Coffre 1)" required className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.location} onChange={e => setNewEq({...newEq, location: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.quantity} onChange={e => setNewEq({...newEq, quantity: parseInt(e.target.value) || 1})} />
-                    <input type="text" placeholder="Lien Vidéo" className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.videoUrl || ''} onChange={e => setNewEq({...newEq, videoUrl: e.target.value})} />
-                  </div>
-                  
-                  <div className="bg-white p-2 rounded-lg border border-red-50 space-y-2">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Documents & PDFs</span>
-                    {(newEq.documents || []).map(d => (
-                      <div key={d.id} className="flex justify-between items-center bg-slate-50 p-1.5 rounded text-[9px] border">
-                        <span className="truncate font-bold text-slate-600">{d.name}</span>
-                        <button type="button" onClick={() => removeDocumentFromForm(d.id, false)} className="text-red-500 font-bold px-1">×</button>
-                      </div>
-                    ))}
-                    <div className="grid grid-cols-2 gap-1 mt-1">
-                      <input type="text" placeholder="Nom du doc" className="text-[16px] md:text-[9px] p-1.5 border rounded" value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})} />
-                      <input type="text" placeholder="URL du fichier" className="text-[16px] md:text-[9px] p-1.5 border rounded" value={newDoc.url} onChange={e => setNewDoc({...newDoc, url: e.target.value})} />
-                    </div>
-                    <button type="button" onClick={() => addDocumentToForm(false)} className="w-full py-1 text-[8px] font-black uppercase text-red-600 bg-red-50 rounded border border-red-100">+ Lier un document</button>
                   </div>
 
-                  <textarea placeholder="Notes (facultatif)" className="w-full text-[16px] md:text-xs p-2 rounded-md border h-14" value={newEq.notes} onChange={e => setNewEq({...newEq, notes: e.target.value})} />
-                  <button type="submit" className="w-full bg-red-600 text-white py-2.5 rounded-md text-[10px] font-black uppercase tracking-widest shadow-md">Créer l'équipement</button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input 
+                      type="text" 
+                      placeholder="Catégorie" 
+                      required 
+                      className={inputClasses}
+                      value={editingEqId ? (editEqForm.category || '') : newEq.category} 
+                      onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Emplacement" 
+                      required 
+                      className={inputClasses}
+                      value={editingEqId ? (editEqForm.location || '') : newEq.location} 
+                      onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                     <div className="flex flex-col">
+                        <label className="text-[8px] font-black text-slate-400 uppercase mb-1">Quantité</label>
+                        <input 
+                            type="number" 
+                            className={inputClasses}
+                            value={editingEqId ? (editEqForm.quantity || 1) : newEq.quantity} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, quantity: parseInt(e.target.value) || 0}) : setNewEq({...newEq, quantity: parseInt(e.target.value) || 0})} 
+                        />
+                     </div>
+                     <div className="flex flex-col">
+                        <label className="text-[8px] font-black text-slate-400 uppercase mb-1">Vidéo (YouTube URL)</label>
+                        <input 
+                            type="text" 
+                            placeholder="https://youtube.com/..."
+                            className={inputClasses}
+                            value={editingEqId ? (editEqForm.videoUrl || '') : newEq.videoUrl} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, videoUrl: e.target.value}) : setNewEq({...newEq, videoUrl: e.target.value})} 
+                        />
+                     </div>
+                  </div>
+
+                  {/* Documents Section */}
+                  <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-100">
+                    <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Documentation (Manuels, PDF)</h5>
+                    <div className="space-y-2">
+                       {(editingEqId ? (editEqForm.documents || []) : (newEq.documents || [])).map(doc => (
+                         <div key={doc.id} className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                           <span className="text-xs font-bold truncate max-w-[150px] text-slate-900">{doc.name}</span>
+                           <button type="button" onClick={() => removeDocFromForm(doc.id)} className="text-red-500 p-1 hover:bg-red-50 rounded transition-colors"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/></svg></button>
+                         </div>
+                       ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="text" placeholder="Nom du doc" className="text-xs p-2 rounded-lg border border-slate-200 font-bold text-slate-900 bg-white outline-none focus:border-slate-400" value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})} />
+                      <input type="text" placeholder="URL du doc" className="text-xs p-2 rounded-lg border border-slate-200 font-bold text-slate-900 bg-white outline-none focus:border-slate-400" value={newDoc.url} onChange={e => setNewDoc({...newDoc, url: e.target.value})} />
+                    </div>
+                    <button type="button" onClick={addDocToForm} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Ajouter au dossier</button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <button type="button" onClick={() => { setIsAdding(false); setEditingEqId(null); }} className="text-slate-500 font-black uppercase text-[10px] px-4 py-2 hover:text-slate-800 transition-colors">Annuler</button>
+                    <button type="submit" className="bg-red-600 text-white py-4 px-10 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all">Enregistrer</button>
+                  </div>
                 </form>
               )}
 
-              {/* Formulaire ÉDITION */}
-              {editingEqId && (
-                <form onSubmit={handleEditSubmit} className="bg-blue-50 p-3 rounded-xl border-2 border-blue-100 space-y-3 mb-4 animate-slide-up">
-                  <div className="flex justify-between items-center mb-1">
-                    <h5 className="text-[8px] font-black text-blue-600 uppercase">Modification</h5>
-                    <button type="button" onClick={() => setEditingEqId(null)} className="text-[8px] font-black text-gray-400 uppercase">Fermer</button>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <button type="button" onClick={() => triggerImageUpload(editingEqId)} className="w-14 h-14 bg-white border border-blue-200 rounded-lg flex items-center justify-center overflow-hidden">
-                      {editEqForm.thumbnailUrl ? <img src={editEqForm.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-5 h-5 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h14a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2"/></svg>}
-                    </button>
-                    <div className="flex-1">
-                      <input type="text" placeholder="Nom" required className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.name} onChange={e => setEditEqForm({...editEqForm, name: e.target.value})} />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="Catégorie" required className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.category} onChange={e => setEditEqForm({...editEqForm, category: e.target.value})} />
-                    <input type="text" placeholder="Emplacement" required className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.location} onChange={e => setEditEqForm({...editEqForm, location: e.target.value})} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.quantity} onChange={e => setEditEqForm({...editEqForm, quantity: parseInt(e.target.value) || 1})} />
-                    <input type="text" placeholder="Lien Vidéo" className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.videoUrl || ''} onChange={e => setEditEqForm({...editEqForm, videoUrl: e.target.value})} />
-                  </div>
-
-                  <div className="bg-white p-2 rounded-lg border border-blue-50 space-y-2">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Gestion Documents</span>
-                    {(editEqForm.documents || []).map(d => (
-                      <div key={d.id} className="flex justify-between items-center bg-slate-50 p-1.5 rounded text-[9px] border">
-                        <span className="truncate font-bold text-slate-600">{d.name}</span>
-                        <button type="button" onClick={() => removeDocumentFromForm(d.id, true)} className="text-red-500 font-bold px-1">×</button>
-                      </div>
-                    ))}
-                    <div className="grid grid-cols-2 gap-1 mt-1">
-                      <input type="text" placeholder="Nom" className="text-[16px] md:text-[9px] p-1.5 border rounded" value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})} />
-                      <input type="text" placeholder="Lien" className="text-[16px] md:text-[9px] p-1.5 border rounded" value={newDoc.url} onChange={e => setNewDoc({...newDoc, url: e.target.value})} />
-                    </div>
-                    <button type="button" onClick={() => addDocumentToForm(true)} className="w-full py-1 text-[8px] font-black uppercase text-blue-600 bg-blue-50 rounded border border-blue-100">+ Ajouter document</button>
-                  </div>
-
-                  <textarea placeholder="Notes" className="w-full text-[16px] md:text-xs p-2 rounded-md border h-14" value={editEqForm.notes} onChange={e => setEditEqForm({...editEqForm, notes: e.target.value})} />
-                  <button type="submit" className="w-full bg-blue-600 text-white py-2.5 rounded-md text-[10px] font-black uppercase tracking-widest shadow-md">Enregistrer les modifs</button>
-                </form>
-              )}
-
-              <div className="space-y-3">
+              {/* Equipment Cards List */}
+              <div className="space-y-4">
                 {filteredAndSortedEquipment.map((item) => {
                   const isCheckedToday = item.lastChecked === today;
-                  const hasAnomaly = !!item.anomaly;
+                  const hasAnomaly = !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
                   return (
-                    <div key={item.id} className={`border rounded-xl p-3 transition-all ${hasAnomaly ? 'border-orange-200 bg-orange-50/10' : 'border-gray-50 bg-gray-50/30'}`}>
-                      <div className="flex items-start space-x-3">
-                        <div className="w-12 h-12 rounded-lg bg-white border border-gray-100 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                          {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-5 h-5 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4" strokeWidth="2"/></svg>}
+                    <div key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
+                      <div className="flex items-start space-x-4">
+                        <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                          {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start">
-                            <div className="truncate pr-2">
-                              <h5 className="font-black text-slate-800 text-[11px] truncate uppercase"><Highlight text={item.name} search={equipmentSearch} /></h5>
-                              <div className="flex items-center space-x-2 mt-0.5">
-                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">{item.category}</span>
-                                <span className="text-[7px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-black uppercase tracking-tighter">{item.location}</span>
-                              </div>
-                            </div>
-                            <div className="flex-shrink-0 text-right">
-                              <span className="text-[10px] font-black text-slate-900">Qté: {item.quantity}</span>
-                              <div className={`text-[7px] font-black mt-1 px-1 py-0.5 rounded ${isCheckedToday ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>{isCheckedToday ? 'VÉRIFIÉ' : 'À VÉRIFIER'}</div>
-                            </div>
+                            <h5 className="font-black text-slate-900 text-[14px] uppercase tracking-tight truncate"><Highlight text={item.name} search={equipmentSearch} /></h5>
+                            <span className="text-[10px] font-black bg-slate-900 text-white px-3 py-1 rounded-xl">x{item.quantity}</span>
+                          </div>
+                          <div className="flex items-center space-x-3 mt-2">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.category}</span>
+                            <span className="text-[8px] font-black text-red-600 uppercase bg-red-50 px-2 py-0.5 rounded border border-red-100">📍 {item.location}</span>
                           </div>
                         </div>
                       </div>
 
                       {hasAnomaly && (
-                        <div className="mt-2 bg-orange-50 border border-orange-100 rounded-lg p-2 flex justify-between items-center">
-                          <p className="text-[9px] text-orange-800 font-bold truncate pr-2"><span className="uppercase text-orange-600 mr-1">Alerte:</span>{item.anomaly}</p>
-                          <button onClick={() => onUpdateEquipment(vehicle.id, item.id, { anomaly: undefined, condition: 'Bon' })} className="text-[8px] font-black text-orange-500 uppercase flex-shrink-0">Effacer</button>
+                        <div className="mt-4 bg-orange-600 text-white p-3.5 rounded-2xl flex justify-between items-center shadow-lg shadow-orange-600/10">
+                          <div className="flex-1 min-w-0 pr-4">
+                            <p className="text-[10px] font-black uppercase tracking-wide truncate">⚠️ {item.anomaly || 'Alerte Matériel'}</p>
+                          </div>
+                          <button onClick={() => setConfirmClearAnomalyId(item.id)} className="flex-shrink-0 text-[10px] font-black text-orange-600 bg-white px-4 py-2 rounded-xl uppercase active:scale-95 transition-transform shadow-sm">Rétablir</button>
                         </div>
                       )}
 
-                      <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-2">
-                        <div className="flex space-x-1 sm:space-x-2">
-                          <button onClick={() => { setReportingAnomalyId(item.id); setTempAnomaly(item.anomaly || ""); }} className="text-[8px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1.5 rounded border">Signaler</button>
-                          <button onClick={() => { setEditingEqId(item.id); setEditEqForm(item); setIsAdding(false); }} className="text-[8px] font-black text-blue-500 uppercase bg-blue-50 px-2 py-1.5 rounded border border-blue-100">Éditer</button>
-                          <button onClick={() => setDetailedEqId(item.id)} className="text-[8px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1.5 rounded border">Infos</button>
+                      {/* Actions Footer */}
+                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                        <div className="flex space-x-2">
+                          <button 
+                            onClick={() => startEditing(item)} 
+                            className="p-2.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 active:scale-90 transition-all shadow-sm"
+                            title="Modifier"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                          </button>
+                          <button 
+                            onClick={() => { setReportingAnomalyId(item.id); setTempAnomaly(item.anomaly || ""); setTempAnomalyTags(item.anomalyTags || []); }} 
+                            className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl transition-colors border border-slate-200 shadow-sm"
+                          >
+                            Signaler
+                          </button>
+                          <button onClick={() => setDetailedEqId(item.id)} className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl transition-colors border border-blue-100 shadow-sm">Docs</button>
                         </div>
-                        <button onClick={() => onUpdateEquipment(vehicle.id, item.id, { lastChecked: today })} className={`text-[9px] font-black px-3 py-1.5 rounded-lg border transition-all ${isCheckedToday ? 'border-green-200 text-green-600 bg-green-50' : 'bg-red-600 border-red-600 text-white shadow-sm active:scale-95'}`}>{isCheckedToday ? 'OK' : 'Valider'}</button>
+                        <button 
+                          onClick={() => onUpdateEquipment(vehicle.id, item.id, { lastChecked: today })} 
+                          className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}
+                        >
+                          {isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
+                        </button>
                       </div>
 
                       {reportingAnomalyId === item.id && (
-                        <div className="mt-3 bg-white p-3 rounded-xl border-2 border-orange-200 space-y-2 animate-slide-up">
-                          <textarea placeholder="Description de l'anomalie..." className="w-full text-[16px] md:text-[10px] p-2 bg-slate-50 border rounded-lg h-12 outline-none" value={tempAnomaly} onChange={e => setTempAnomaly(e.target.value)} />
-                          <div className="flex items-center justify-between text-[8px] font-black text-slate-400 uppercase">
-                            <span>Manquants</span>
-                            <div className="flex items-center space-x-2">
-                              <button type="button" onClick={() => setTempMissingQty(Math.max(0, tempMissingQty - 1))} className="w-5 h-5 bg-slate-50 border rounded flex items-center justify-center">-</button>
-                              <span className="text-[10px] text-slate-800">{tempMissingQty}</span>
-                              <button type="button" onClick={() => setTempMissingQty(Math.min(item.quantity, tempMissingQty + 1))} className="w-5 h-5 bg-slate-50 border rounded flex items-center justify-center">+</button>
-                            </div>
+                        <div className="mt-4 bg-slate-50 p-4 rounded-xl border-2 border-orange-200 space-y-4 animate-slide-up shadow-inner">
+                          <div className="flex flex-wrap gap-2">
+                            {['Sale', 'Abîmé', 'Manquant'].map(tag => (
+                              <button key={tag} onClick={() => toggleAnomalyTag(tag)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${tempAnomalyTags.includes(tag) ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white border-slate-300 text-slate-400 shadow-sm'}`}>{tag}</button>
+                            ))}
                           </div>
-                          <button onClick={() => handleSaveAnomaly(item.id)} className="w-full bg-slate-900 text-white py-2 rounded-lg text-[9px] font-black uppercase shadow-lg">Valider</button>
+                          
+                          {/* Quantity Selector for 'Manquant' */}
+                          {tempAnomalyTags.includes('Manquant') && (
+                            <div className="bg-white p-3 rounded-xl border border-orange-100 flex items-center justify-between animate-fade-in">
+                              <span className="text-[10px] font-black text-slate-400 uppercase">Quantité manquante</span>
+                              <div className="flex items-center space-x-4">
+                                <button 
+                                  onClick={() => setTempMissingQuantity(Math.max(1, tempMissingQuantity - 1))}
+                                  className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-black text-slate-600 active:scale-90"
+                                >-</button>
+                                <span className="text-sm font-black text-slate-900 w-4 text-center">{tempMissingQuantity}</span>
+                                <button 
+                                  onClick={() => setTempMissingQuantity(Math.min(item.quantity, tempMissingQuantity + 1))}
+                                  className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-black text-slate-600 active:scale-90"
+                                >+</button>
+                              </div>
+                            </div>
+                          )}
+
+                          <textarea placeholder="Description de l'incident..." className="w-full text-xs p-3 bg-white border-2 border-slate-100 rounded-xl h-20 outline-none font-bold shadow-inner text-slate-900" value={tempAnomaly} onChange={e => setTempAnomaly(e.target.value)} />
+                          <button onClick={() => handleSaveAnomaly(item.id)} className="w-full bg-slate-900 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-transform">Enregistrer le rapport</button>
                         </div>
                       )}
                     </div>
@@ -429,21 +478,36 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
           {activeTab === 'history' && (
             <div className="space-y-4 animate-fade-in pl-6 relative">
-               <div className="absolute left-3 top-0 bottom-0 w-px bg-slate-100" />
-               <div className="flex justify-between items-center mb-2"><h4 className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em]">Journal</h4><button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[9px] font-black text-red-600 uppercase">Ajouter</button></div>
+               <div className="absolute left-3 top-0 bottom-0 w-1 bg-slate-200 rounded-full" />
+               <div className="flex justify-between items-center mb-6">
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Registre de l'Engin</h4>
+                 <button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[10px] font-black text-red-600 uppercase bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 active:scale-95 transition-all">Ajouter Note</button>
+               </div>
+               
                {isAddingLog && (
-                  <form onSubmit={handleAddLogSubmit} className="bg-slate-50 p-3 rounded-lg border-2 border-slate-200 space-y-2 animate-slide-up">
-                    <textarea placeholder="Note rapide..." className="w-full text-[16px] md:text-[10px] p-2 rounded border h-16 outline-none" value={newLog.description} onChange={e => setNewLog({...newLog, description: e.target.value})} />
-                    <button type="submit" className="w-full bg-slate-900 text-white py-1.5 rounded text-[9px] font-black uppercase tracking-widest shadow-sm">Publier</button>
+                  <form onSubmit={handleAddLogSubmit} className="bg-white p-5 rounded-2xl border-2 border-slate-200 space-y-4 mb-8 animate-slide-up shadow-lg">
+                    <textarea placeholder="Observation technique ou opérationnelle..." required className="w-full text-sm p-3 rounded-xl border border-slate-100 h-24 outline-none font-bold text-slate-900" value={newLog.description} onChange={e => setNewLog({...newLog, description: e.target.value})} />
+                    <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95">Publier</button>
                   </form>
                )}
+
                {vehicle.history.map((entry) => (
-                 <div key={entry.id} className="relative mb-6">
-                    <div className="absolute -left-[1.35rem] top-0">{getHistoryIcon(entry.type)}</div>
-                    <div>
-                      <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{entry.date} <span className="mx-1">•</span> {entry.timestamp}</p>
-                      <p className="text-[10px] text-slate-700 font-medium leading-tight mt-0.5">{entry.description}</p>
-                      <p className="text-[7px] font-bold text-slate-400 uppercase mt-1">Par : {entry.performedBy}</p>
+                 <div key={entry.id} className="relative mb-8 group">
+                    <div className="absolute -left-[1.35rem] top-1 group-hover:scale-125 transition-transform shadow-lg rounded-full z-10">
+                        <div className={`w-6 h-6 rounded-full bg-white border-2 flex items-center justify-center ${entry.status === 'success' ? 'border-green-500' : entry.status === 'danger' ? 'border-red-500' : entry.status === 'warning' ? 'border-orange-500' : 'border-slate-900'}`}>
+                           <div className={`w-1.5 h-1.5 rounded-full ${entry.status === 'success' ? 'bg-green-500' : entry.status === 'danger' ? 'bg-red-500' : entry.status === 'warning' ? 'bg-orange-500' : 'bg-slate-900'}`} />
+                        </div>
+                    </div>
+                    <div className={`p-5 rounded-3xl border-2 transition-all shadow-sm group-hover:shadow-md ${getEntryColorClasses(entry.status)}`}>
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{entry.date} <span className="mx-1">•</span> {entry.timestamp}</p>
+                        {entry.status && <span className={`w-2 h-2 rounded-full ${entry.status === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : entry.status === 'danger' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : entry.status === 'warning' ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]'}`} />}
+                      </div>
+                      <p className="text-[12px] font-bold text-slate-900 leading-relaxed">{entry.description}</p>
+                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-200/50">
+                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Signataire : {entry.performedBy}</p>
+                        <span className="text-[7px] font-black text-slate-400 uppercase">{entry.type}</span>
+                      </div>
                     </div>
                  </div>
                ))}
@@ -451,137 +515,68 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           )}
         </div>
 
-        {/* Détails Ressources Overlay (STABILISÉ POUR ÉVITER SUPERPOSITION) */}
-        {selectedDetailedEq && (
-          <div className="absolute inset-0 z-[120] bg-white flex flex-col animate-slide-up">
-            {/* Header Fixe de l'overlay mis à jour */}
-            <div className="p-3 border-b flex items-center bg-white flex-shrink-0 shadow-sm">
-              {/* Vignette à gauche */}
-              <div className="w-12 h-12 rounded-xl bg-gray-50 border border-gray-100 flex-shrink-0 flex items-center justify-center overflow-hidden mr-3">
-                {selectedDetailedEq.thumbnailUrl ? (
-                  <img src={selectedDetailedEq.thumbnailUrl} className="w-full h-full object-cover" alt={selectedDetailedEq.name} />
-                ) : (
-                  <svg className="w-6 h-6 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M20 7l-8-4-8 4m16 0l-8 4" strokeWidth="2"/>
-                  </svg>
-                )}
+        {/* Confirmation Modal */}
+        {confirmClearAnomalyId && (
+          <div className="absolute inset-0 z-[200] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-8 animate-fade-in text-center">
+            <div className="bg-white rounded-[40px] p-8 w-full max-w-sm shadow-2xl animate-scale-in border-4 border-white/20">
+              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
               </div>
-              
-              {/* Texte décalé (Titre + Emplacement) */}
-              <div className="flex-1 min-w-0">
-                <h3 className="text-[11px] font-black uppercase tracking-tight text-slate-900 truncate">
-                  {selectedDetailedEq.name}
-                </h3>
-                <div className="flex items-center space-x-2 mt-0.5">
-                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
-                    {selectedDetailedEq.category}
-                  </span>
-                  <span className="text-[8px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded font-black uppercase tracking-tighter">
-                    {selectedDetailedEq.location}
-                  </span>
-                </div>
+              <h3 className="font-black text-2xl uppercase tracking-tighter mb-4 text-slate-900 leading-none">Rétablissement</h3>
+              <p className="text-slate-500 text-sm mb-10 leading-relaxed font-medium">Confirmez-vous que ce matériel est désormais 100% conforme pour l'intervention ?</p>
+              <div className="space-y-3">
+                <button onClick={() => { onUpdateEquipment(vehicle.id, confirmClearAnomalyId, { anomaly: undefined, anomalyTags: [], condition: 'Bon', lastChecked: today }); setConfirmClearAnomalyId(null); }} className="w-full bg-green-600 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-green-600/20 active:scale-95 transition-all">Valider la conformité</button>
+                <button onClick={() => setConfirmClearAnomalyId(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px]">Annuler</button>
               </div>
-
-              {/* Bouton de fermeture à droite */}
-              <button 
-                onClick={() => setDetailedEqId(null)} 
-                className="p-2 bg-slate-100 rounded-full text-slate-400 active:bg-slate-200 ml-2"
-                aria-label="Fermer"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
+          </div>
+        )}
 
-            {/* Contenu Défilant */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-white">
-               <section>
-                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">État & Rapports</h4>
-                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black uppercase text-slate-400">Emplacement Physique</span>
-                      <span className="text-[10px] font-black text-slate-800 uppercase bg-white px-2 py-0.5 rounded border border-slate-100">{selectedDetailedEq.location}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black uppercase text-slate-400">Condition Générale</span>
-                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${selectedDetailedEq.condition === 'Bon' ? 'text-green-600 bg-green-100' : 'text-orange-600 bg-orange-100'}`}>
-                        {selectedDetailedEq.condition}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] font-black uppercase text-slate-400">Dernier Contrôle</span>
-                      <span className="text-[10px] font-black text-slate-800">{selectedDetailedEq.lastChecked}</span>
-                    </div>
-                    {selectedDetailedEq.notes && (
-                      <div className="mt-2 pt-3 border-t border-slate-200">
-                        <span className="text-[8px] font-black text-slate-400 uppercase block mb-1">Notes techniques</span>
-                        <p className="text-[11px] text-slate-600 leading-relaxed italic">"{selectedDetailedEq.notes}"</p>
-                      </div>
+        {/* Detailed Item Modal */}
+        {selectedDetailedEq && (
+          <div className="absolute inset-0 z-[120] bg-slate-50 flex flex-col animate-slide-up">
+            <div className="p-4 border-b bg-white flex items-center shadow-md z-10">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden mr-4">
+                {selectedDetailedEq.thumbnailUrl ? <img src={selectedDetailedEq.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[14px] font-black uppercase tracking-tight text-slate-900 truncate">{selectedDetailedEq.name}</h3>
+                <span className="text-[9px] font-black text-red-600 uppercase bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">📍 {selectedDetailedEq.location}</span>
+              </div>
+              <button onClick={() => setDetailedEqId(null)} className="p-3 bg-slate-100 rounded-2xl text-slate-500 active:scale-90 transition-all ml-2 shadow-sm border border-slate-200"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+               <section className="bg-white p-5 rounded-3xl border-2 border-slate-200 shadow-sm">
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Documentation Technique</h4>
+                 <div className="grid grid-cols-2 gap-4">
+                    {(selectedDetailedEq.documents || []).length > 0 ? (
+                      selectedDetailedEq.documents?.map(doc => (
+                        <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer" className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center hover:bg-slate-100 transition-colors">
+                           <svg className="w-6 h-6 text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.707 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                           <span className="text-[10px] font-black uppercase text-slate-900 leading-tight">{doc.name}</span>
+                        </a>
+                      ))
+                    ) : (
+                      <div className="col-span-2 text-center py-4 text-slate-300 text-[10px] font-black uppercase">Aucun document disponible</div>
                     )}
                  </div>
                </section>
-
                <section>
-                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">Vidéo de Formation</h4>
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Tutoriel Opérationnel</h4>
                  {selectedDetailedEq.videoUrl ? (
-                   <div className="space-y-3">
-                     {getYouTubeEmbedUrl(selectedDetailedEq.videoUrl) ? (
-                       <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-xl border-2 border-slate-100">
-                         <iframe 
-                           src={getYouTubeEmbedUrl(selectedDetailedEq.videoUrl)!} 
-                           className="w-full h-full" 
-                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                           allowFullScreen
-                         />
-                       </div>
-                     ) : (
-                       <div className="bg-slate-50 p-6 rounded-2xl text-center border-2 border-dashed border-slate-200">
-                          <p className="text-[10px] font-bold text-slate-400 mb-3 truncate">{selectedDetailedEq.videoUrl}</p>
-                          <a href={selectedDetailedEq.videoUrl} target="_blank" className="inline-flex items-center space-x-2 bg-red-600 text-white text-[10px] px-8 py-3 rounded-full font-black uppercase shadow-lg active:scale-95 transition-transform">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd"/></svg>
-                            <span>Voir le tutoriel</span>
-                          </a>
-                       </div>
-                     )}
+                   <div className="aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-200">
+                     <iframe 
+                      src={`https://www.youtube.com/embed/${selectedDetailedEq.videoUrl.split('v=')[1]?.split('&')[0] || selectedDetailedEq.videoUrl.split('/').pop()}`} 
+                      className="w-full h-full" 
+                      allowFullScreen 
+                     />
                    </div>
                  ) : (
-                   <div className="py-10 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase tracking-widest">Aucune vidéo associée</div>
-                 )}
-               </section>
-
-               <section>
-                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">Documentation technique</h4>
-                 {(selectedDetailedEq.documents || []).length === 0 ? (
-                   <div className="py-10 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase tracking-widest">Aucun document joint</div>
-                 ) : (
-                   <div className="grid grid-cols-1 gap-2">
-                     {selectedDetailedEq.documents.map(doc => (
-                       <a key={doc.id} href={doc.url} target="_blank" className="flex items-center p-4 rounded-2xl bg-white border border-slate-100 shadow-sm hover:border-red-200 transition-all active:scale-[0.98]">
-                         <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center mr-3 flex-shrink-0">
-                           <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth="2"/></svg>
-                         </div>
-                         <div className="flex-1 min-w-0">
-                           <span className="text-[10px] font-black text-slate-800 truncate block">{doc.name}</span>
-                           <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">Format PDF / Manuel</span>
-                         </div>
-                         <svg className="w-4 h-4 text-slate-300 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3"/></svg>
-                       </a>
-                     ))}
-                   </div>
+                   <div className="py-12 text-center bg-white border-2 border-dashed border-slate-300 rounded-3xl text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune vidéo disponible</div>
                  )}
                </section>
             </div>
-
-            {/* Pied de page Fixe */}
-            <div className="p-4 border-t bg-slate-50 flex-shrink-0">
-              <button 
-                onClick={() => setDetailedEqId(null)} 
-                className="w-full bg-slate-900 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-[0.1em] shadow-xl active:scale-95 transition-all"
-              >
-                Retour à l'inventaire
-              </button>
-            </div>
+            <div className="p-5 border-t bg-white sticky bottom-0"><button onClick={() => setDetailedEqId(null)} className="w-full bg-slate-900 text-white py-5 rounded-3xl text-[11px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all">Fermer</button></div>
           </div>
         )}
 
@@ -592,15 +587,15 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 };
 
 const TabButton: React.FC<{ active: boolean; onClick: () => void; label: string }> = ({ active, onClick, label }) => (
-  <button onClick={onClick} className={`flex-1 py-3 text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'text-red-600 border-b-2 border-red-600 bg-white font-bold' : 'text-slate-400'}`}>
+  <button onClick={onClick} className={`flex-1 py-5 text-[10px] font-black uppercase tracking-widest transition-all ${active ? 'text-red-600 border-b-4 border-red-600 bg-slate-50 font-black' : 'text-slate-400 hover:text-slate-600'}`}>
     {label}
   </button>
 );
 
 const InfoBox: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">{label}</span>
-    <span className="text-[11px] font-black text-slate-800">{value}</span>
+  <div className="bg-white p-5 rounded-2xl border-2 border-slate-200 shadow-sm">
+    <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">{label}</span>
+    <span className="text-[13px] font-black text-slate-900 uppercase truncate block">{value}</span>
   </div>
 );
 

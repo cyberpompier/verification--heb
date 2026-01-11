@@ -30,6 +30,7 @@ export interface Equipment {
   condition: 'Bon' | 'Moyen' | 'Mauvais' | 'À remplacer';
   notes?: string;
   anomaly?: string;
+  anomalyTags?: string[];
   thumbnailUrl?: string;
   manualUrl?: string;
   videoUrl?: string;
@@ -41,6 +42,7 @@ export interface HistoryEntry {
   date: string;
   timestamp: string;
   type: 'status' | 'maintenance' | 'note' | 'equipment';
+  status?: 'success' | 'danger' | 'warning' | 'info'; // Pour le code couleur
   description: string;
   performedBy: string;
   equipmentId?: string;
