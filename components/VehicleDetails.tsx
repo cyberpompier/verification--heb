@@ -73,7 +73,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         const element = document.getElementById(`eq-${highlightEquipmentId}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Add a temporary highlight effect
           element.classList.add('ring-4', 'ring-red-500/50', 'ring-offset-2');
           setTimeout(() => {
             element.classList.remove('ring-4', 'ring-red-500/50', 'ring-offset-2');
@@ -338,7 +337,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <input 
                       type="text" 
                       placeholder="Catégorie" 
@@ -347,14 +346,40 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                       value={editingEqId ? (editEqForm.category || '') : newEq.category} 
                       onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
                     />
-                    <input 
-                      type="text" 
-                      placeholder="Emplacement" 
-                      required 
-                      className={inputClasses}
-                      value={editingEqId ? (editEqForm.location || '') : newEq.location} 
-                      onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
-                    />
+                    
+                    {/* Emplacement Selector & Creation */}
+                    <div className="space-y-2">
+                      <div className="relative group">
+                        <input 
+                          type="text" 
+                          placeholder="Emplacement" 
+                          required 
+                          className={inputClasses}
+                          value={editingEqId ? (editEqForm.location || '') : newEq.location} 
+                          onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
+                        />
+                        <svg className="w-4 h-4 text-slate-300 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
+                      </div>
+                      
+                      {uniqueLocations.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                           {uniqueLocations.slice(0, 8).map(loc => (
+                             <button
+                                key={loc}
+                                type="button"
+                                onClick={() => editingEqId ? setEditEqForm({...editEqForm, location: loc}) : setNewEq({...newEq, location: loc})}
+                                className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border transition-all ${
+                                  (editingEqId ? editEqForm.location : newEq.location) === loc 
+                                    ? 'bg-slate-900 border-slate-900 text-white' 
+                                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                                }`}
+                             >
+                               {loc}
+                             </button>
+                           ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -471,7 +496,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                             ))}
                           </div>
                           
-                          {/* Quantity Selector for 'Manquant' */}
                           {tempAnomalyTags.includes('Manquant') && (
                             <div className="bg-white p-3 rounded-xl border border-orange-100 flex items-center justify-between animate-fade-in">
                               <span className="text-[10px] font-black text-slate-400 uppercase">Quantité manquante</span>
