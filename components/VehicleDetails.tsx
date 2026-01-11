@@ -39,6 +39,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [tempAnomaly, setTempAnomaly] = useState("");
   const [tempMissingQty, setTempMissingQty] = useState(0);
   const [equipmentSearch, setEquipmentSearch] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [detailedEqId, setDetailedEqId] = useState<string | null>(null);
   const [editingEqIdForImage, setEditingEqIdForImage] = useState<string | null>(null);
 
@@ -46,7 +47,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const today = new Date().toISOString().split('T')[0];
   
   const [newEq, setNewEq] = useState<Omit<Equipment, 'id'>>({
-    name: '', category: '', quantity: 1, condition: 'Bon',
+    name: '', category: '', location: '', quantity: 1, condition: 'Bon',
     lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', documents: []
   });
 
@@ -57,17 +58,32 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
 
+  // Récupérer tous les emplacements uniques présents dans le véhicule
+  const uniqueLocations = useMemo(() => {
+    const locs = new Set(vehicle.equipment.map(e => e.location));
+    return Array.from(locs).filter(l => !!l).sort();
+  }, [vehicle.equipment]);
+
   const filteredAndSortedEquipment = useMemo(() => {
     let items = [...vehicle.equipment];
+    
+    // Filtre par texte
     if (equipmentSearch.trim()) {
       const query = equipmentSearch.toLowerCase();
       items = items.filter(item => 
         item.name.toLowerCase().includes(query) || 
-        item.category.toLowerCase().includes(query)
+        item.category.toLowerCase().includes(query) ||
+        item.location.toLowerCase().includes(query)
       );
     }
+
+    // Filtre par emplacement sélectionné
+    if (selectedLocation) {
+      items = items.filter(item => item.location === selectedLocation);
+    }
+
     return items.sort((a, b) => a.name.localeCompare(b.name));
-  }, [vehicle.equipment, equipmentSearch]);
+  }, [vehicle.equipment, equipmentSearch, selectedLocation]);
 
   const selectedDetailedEq = useMemo(() => 
     vehicle.equipment.find(e => e.id === detailedEqId),
@@ -92,9 +108,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       ...newEq,
       id: Math.random().toString(36).substr(2, 9),
       documents: newEq.documents || []
-    });
+    } as Equipment);
     setIsAdding(false);
-    setNewEq({ name: '', category: '', quantity: 1, condition: 'Bon', lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', documents: [] });
+    setNewEq({ name: '', category: '', location: '', quantity: 1, condition: 'Bon', lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', documents: [] });
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
@@ -235,9 +251,31 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               </div>
 
               {(!isAdding && !editingEqId) && (
-                <div className="relative mb-2">
-                  <input type="text" placeholder="Filtrer..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-[16px] md:text-xs py-2 pl-8 pr-4 bg-gray-50 border border-gray-100 rounded-lg outline-none" />
-                  <svg className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5"/></svg>
+                <div className="space-y-2 mb-2">
+                  {/* Barre de Recherche */}
+                  <div className="relative">
+                    <input type="text" placeholder="Filtrer par nom, type..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-[16px] md:text-xs py-2 pl-8 pr-4 bg-gray-50 border border-gray-100 rounded-lg outline-none" />
+                    <svg className="w-3.5 h-3.5 text-gray-300 absolute left-2.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="2.5"/></svg>
+                  </div>
+                  
+                  {/* Sélecteur d'Emplacement (horizontal scroll chips) */}
+                  <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide -mx-1 px-1">
+                    <button 
+                      onClick={() => setSelectedLocation(null)}
+                      className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tight transition-all border ${!selectedLocation ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-gray-100'}`}
+                    >
+                      Tous
+                    </button>
+                    {uniqueLocations.map(loc => (
+                      <button 
+                        key={loc}
+                        onClick={() => setSelectedLocation(selectedLocation === loc ? null : loc)}
+                        className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tight transition-all border ${selectedLocation === loc ? 'bg-red-600 text-white border-red-600 shadow-sm' : 'bg-white text-slate-400 border-gray-100'}`}
+                      >
+                        {loc}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -253,10 +291,13 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="Catégorie" required className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.category} onChange={e => setNewEq({...newEq, category: e.target.value})} />
-                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.quantity} onChange={e => setNewEq({...newEq, quantity: parseInt(e.target.value) || 1})} />
+                    <input type="text" placeholder="Catégorie (ex: EPI)" required className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.category} onChange={e => setNewEq({...newEq, category: e.target.value})} />
+                    <input type="text" placeholder="Emplacement (ex: Coffre 1)" required className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.location} onChange={e => setNewEq({...newEq, location: e.target.value})} />
                   </div>
-                  <input type="text" placeholder="Lien Vidéo (YouTube...)" className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={newEq.videoUrl || ''} onChange={e => setNewEq({...newEq, videoUrl: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.quantity} onChange={e => setNewEq({...newEq, quantity: parseInt(e.target.value) || 1})} />
+                    <input type="text" placeholder="Lien Vidéo" className="text-[16px] md:text-xs p-2 rounded-md border" value={newEq.videoUrl || ''} onChange={e => setNewEq({...newEq, videoUrl: e.target.value})} />
+                  </div>
                   
                   <div className="bg-white p-2 rounded-lg border border-red-50 space-y-2">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Documents & PDFs</span>
@@ -295,9 +336,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <input type="text" placeholder="Catégorie" required className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.category} onChange={e => setEditEqForm({...editEqForm, category: e.target.value})} />
-                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.quantity} onChange={e => setEditEqForm({...editEqForm, quantity: parseInt(e.target.value) || 1})} />
+                    <input type="text" placeholder="Emplacement" required className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.location} onChange={e => setEditEqForm({...editEqForm, location: e.target.value})} />
                   </div>
-                  <input type="text" placeholder="Lien Vidéo" className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.videoUrl || ''} onChange={e => setEditEqForm({...editEqForm, videoUrl: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" placeholder="Qté" required min="1" className="text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.quantity} onChange={e => setEditEqForm({...editEqForm, quantity: parseInt(e.target.value) || 1})} />
+                    <input type="text" placeholder="Lien Vidéo" className="w-full text-[16px] md:text-xs p-2 rounded-md border" value={editEqForm.videoUrl || ''} onChange={e => setEditEqForm({...editEqForm, videoUrl: e.target.value})} />
+                  </div>
 
                   <div className="bg-white p-2 rounded-lg border border-blue-50 space-y-2">
                     <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block">Gestion Documents</span>
@@ -333,7 +377,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                           <div className="flex justify-between items-start">
                             <div className="truncate pr-2">
                               <h5 className="font-black text-slate-800 text-[11px] truncate uppercase"><Highlight text={item.name} search={equipmentSearch} /></h5>
-                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{item.category}</span>
+                              <div className="flex items-center space-x-2 mt-0.5">
+                                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest">{item.category}</span>
+                                <span className="text-[7px] px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded font-black uppercase tracking-tighter">{item.location}</span>
+                              </div>
                             </div>
                             <div className="flex-shrink-0 text-right">
                               <span className="text-[10px] font-black text-slate-900">Qté: {item.quantity}</span>
@@ -404,7 +451,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           )}
         </div>
 
-        {/* Détails Ressources Overlay (CORRIGÉ : VIGNETTE À GAUCHE ET TEXTE DÉCALÉ) */}
+        {/* Détails Ressources Overlay (STABILISÉ POUR ÉVITER SUPERPOSITION) */}
         {selectedDetailedEq && (
           <div className="absolute inset-0 z-[120] bg-white flex flex-col animate-slide-up">
             {/* Header Fixe de l'overlay mis à jour */}
@@ -420,14 +467,19 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                 )}
               </div>
               
-              {/* Texte décalé (Titre + Catégorie) */}
+              {/* Texte décalé (Titre + Emplacement) */}
               <div className="flex-1 min-w-0">
                 <h3 className="text-[11px] font-black uppercase tracking-tight text-slate-900 truncate">
                   {selectedDetailedEq.name}
                 </h3>
-                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block mt-0.5">
-                  {selectedDetailedEq.category}
-                </span>
+                <div className="flex items-center space-x-2 mt-0.5">
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">
+                    {selectedDetailedEq.category}
+                  </span>
+                  <span className="text-[8px] px-1.5 py-0.5 bg-red-50 text-red-600 rounded font-black uppercase tracking-tighter">
+                    {selectedDetailedEq.location}
+                  </span>
+                </div>
               </div>
 
               {/* Bouton de fermeture à droite */}
@@ -447,6 +499,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                <section>
                  <h4 className="text-[9px] font-black text-slate-400 uppercase mb-3 tracking-widest">État & Rapports</h4>
                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] font-black uppercase text-slate-400">Emplacement Physique</span>
+                      <span className="text-[10px] font-black text-slate-800 uppercase bg-white px-2 py-0.5 rounded border border-slate-100">{selectedDetailedEq.location}</span>
+                    </div>
                     <div className="flex justify-between items-center">
                       <span className="text-[9px] font-black uppercase text-slate-400">Condition Générale</span>
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${selectedDetailedEq.condition === 'Bon' ? 'text-green-600 bg-green-100' : 'text-orange-600 bg-orange-100'}`}>

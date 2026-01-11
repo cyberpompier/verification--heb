@@ -1,4 +1,3 @@
-
 export enum VehicleStatus {
   AVAILABLE = 'Disponible',
   OUT_ON_CALL = 'En intervention',
@@ -25,6 +24,7 @@ export interface Equipment {
   id: string;
   name: string;
   category: string;
+  location: string; // Emplacement physique (ex: Coffre 1, Tiroir Jaune, Toit)
   quantity: number;
   lastChecked: string;
   condition: 'Bon' | 'Moyen' | 'Mauvais' | 'À remplacer';
