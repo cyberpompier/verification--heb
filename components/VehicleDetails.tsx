@@ -1,15 +1,18 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument } from '../types';
 
 interface VehicleDetailsProps {
   vehicle: Vehicle;
   onClose: () => void;
+  currentUser: string;
   onUpdateStatus: (id: string, status: VehicleStatus) => void;
   onUpdateVehicleImage: (id: string, newImageUrl: string) => void;
   onAddEquipment: (vehicleId: string, equipment: Equipment) => void;
   onUpdateEquipment: (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => void;
   onAddHistoryEntry: (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => void;
+  initialTab?: 'info' | 'inventory' | 'history';
+  highlightEquipmentId?: string | null;
 }
 
 const Highlight: React.FC<{ text: string; search: string }> = ({ text, search }) => {
@@ -29,10 +32,11 @@ const Highlight: React.FC<{ text: string; search: string }> = ({ text, search })
 };
 
 const VehicleDetails: React.FC<VehicleDetailsProps> = ({ 
-  vehicle, onClose, onUpdateStatus, onUpdateVehicleImage,
-  onAddEquipment, onUpdateEquipment, onAddHistoryEntry
+  vehicle, onClose, currentUser, onUpdateStatus, onUpdateVehicleImage,
+  onAddEquipment, onUpdateEquipment, onAddHistoryEntry,
+  initialTab = 'info', highlightEquipmentId = null
 }) => {
-  const [activeTab, setActiveTab] = useState<'info' | 'inventory' | 'history'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'inventory' | 'history'>(initialTab);
   const [isAdding, setIsAdding] = useState(false);
   const [editingEqId, setEditingEqId] = useState<string | null>(null);
   const [isAddingLog, setIsAddingLog] = useState(false);
@@ -47,6 +51,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [editingEqIdForImage, setEditingEqIdForImage] = useState<string | null>(null);
 
   const equipmentFileInputRef = useRef<HTMLInputElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
   
   const [newEq, setNewEq] = useState<Omit<Equipment, 'id'>>({
@@ -60,6 +65,23 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [newLog, setNewLog] = useState<{
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
+
+  // Auto-scroll to highlighted equipment when inventory tab is active
+  useEffect(() => {
+    if (activeTab === 'inventory' && highlightEquipmentId) {
+      setTimeout(() => {
+        const element = document.getElementById(`eq-${highlightEquipmentId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add a temporary highlight effect
+          element.classList.add('ring-4', 'ring-red-500/50', 'ring-offset-2');
+          setTimeout(() => {
+            element.classList.remove('ring-4', 'ring-red-500/50', 'ring-offset-2');
+          }, 2000);
+        }
+      }, 300);
+    }
+  }, [activeTab, highlightEquipmentId]);
 
   const uniqueLocations = useMemo(() => {
     const locs = new Set(vehicle.equipment.map(e => e.location));
@@ -152,6 +174,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     onUpdateEquipment(vehicle.id, eqId, { 
       anomaly: anomalyText || (tempAnomalyTags.length > 0 ? "Signalé" : undefined), 
       anomalyTags: tempAnomalyTags,
+      reportedBy: currentUser,
       lastChecked: today,
       condition: 'À remplacer'
     });
@@ -230,7 +253,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 bg-slate-100 pb-12">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 bg-slate-100 pb-12">
           {activeTab === 'info' && (
             <div className="space-y-6 animate-fade-in">
               <section>
@@ -387,7 +410,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                   const isCheckedToday = item.lastChecked === today;
                   const hasAnomaly = !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
                   return (
-                    <div key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
+                    <div id={`eq-${item.id}`} key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
                       <div className="flex items-start space-x-4">
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
                           {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
@@ -408,6 +431,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                         <div className="mt-4 bg-orange-600 text-white p-3.5 rounded-2xl flex justify-between items-center shadow-lg shadow-orange-600/10">
                           <div className="flex-1 min-w-0 pr-4">
                             <p className="text-[10px] font-black uppercase tracking-wide truncate">⚠️ {item.anomaly || 'Alerte Matériel'}</p>
+                            {item.reportedBy && <p className="text-[8px] font-black uppercase opacity-70 mt-1">Par : {item.reportedBy}</p>}
                           </div>
                           <button onClick={() => setConfirmClearAnomalyId(item.id)} className="flex-shrink-0 text-[10px] font-black text-orange-600 bg-white px-4 py-2 rounded-xl uppercase active:scale-95 transition-transform shadow-sm">Rétablir</button>
                         </div>
@@ -442,7 +466,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                       {reportingAnomalyId === item.id && (
                         <div className="mt-4 bg-slate-50 p-4 rounded-xl border-2 border-orange-200 space-y-4 animate-slide-up shadow-inner">
                           <div className="flex flex-wrap gap-2">
-                            {['Sale', 'Abîmé', 'Manquant'].map(tag => (
+                            {['Sale', 'Abîmé', 'Manquant', 'Indisponible'].map(tag => (
                               <button key={tag} onClick={() => toggleAnomalyTag(tag)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${tempAnomalyTags.includes(tag) ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white border-slate-300 text-slate-400 shadow-sm'}`}>{tag}</button>
                             ))}
                           </div>
@@ -525,7 +549,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               <h3 className="font-black text-2xl uppercase tracking-tighter mb-4 text-slate-900 leading-none">Rétablissement</h3>
               <p className="text-slate-500 text-sm mb-10 leading-relaxed font-medium">Confirmez-vous que ce matériel est désormais 100% conforme pour l'intervention ?</p>
               <div className="space-y-3">
-                <button onClick={() => { onUpdateEquipment(vehicle.id, confirmClearAnomalyId, { anomaly: undefined, anomalyTags: [], condition: 'Bon', lastChecked: today }); setConfirmClearAnomalyId(null); }} className="w-full bg-green-600 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-green-600/20 active:scale-95 transition-all">Valider la conformité</button>
+                <button onClick={() => { onUpdateEquipment(vehicle.id, confirmClearAnomalyId, { anomaly: undefined, anomalyTags: [], reportedBy: undefined, condition: 'Bon', lastChecked: today }); setConfirmClearAnomalyId(null); }} className="w-full bg-green-600 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-green-600/20 active:scale-95 transition-all">Valider la conformité</button>
                 <button onClick={() => setConfirmClearAnomalyId(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px]">Annuler</button>
               </div>
             </div>

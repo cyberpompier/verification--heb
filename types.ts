@@ -1,3 +1,4 @@
+
 export enum VehicleStatus {
   AVAILABLE = 'Disponible',
   OUT_ON_CALL = 'En intervention',
@@ -31,6 +32,7 @@ export interface Equipment {
   notes?: string;
   anomaly?: string;
   anomalyTags?: string[];
+  reportedBy?: string; // Nom du personnel ayant signalé l'anomalie
   thumbnailUrl?: string;
   manualUrl?: string;
   videoUrl?: string;
