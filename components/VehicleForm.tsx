@@ -10,7 +10,7 @@ interface VehicleFormProps {
 const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
   const [formData, setFormData] = useState({
     callSign: '',
-    type: VehicleType.ENGINE,
+    type: 'Fourgon Pompe-Tonne (FPT)',
     location: '',
     mileage: 0,
     crewCapacity: 6,
@@ -55,16 +55,17 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelClasses}>Type d'Engin</label>
-                <select 
+                <input 
+                  type="text" 
+                  placeholder="Ex: FPT, EPA, VSR..." 
+                  required 
                   className={inputClasses}
                   value={formData.type}
-                  onChange={e => setFormData({...formData, type: e.target.value as VehicleType})}
-                >
-                  {Object.values(VehicleType).map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                  onChange={e => setFormData({...formData, type: e.target.value})}
+                />
               </div>
               <div>
                 <label className={labelClasses}>Secteur / Caserne</label>

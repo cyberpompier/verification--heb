@@ -14,6 +14,16 @@ export enum VehicleType {
   COMMAND = 'Véhicule de Commandement (VLC)'
 }
 
+export interface UserProfile {
+  id: string;
+  firstName: string;
+  lastName: string;
+  grade: string;
+  assignment: string;
+  email: string;
+  avatarUrl: string;
+}
+
 export interface EquipmentDocument {
   id: string;
   name: string;
@@ -53,7 +63,7 @@ export interface HistoryEntry {
 export interface Vehicle {
   id: string;
   callSign: string;
-  type: VehicleType;
+  type: string;
   status: VehicleStatus;
   mileage: number;
   location: string;

@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Vehicle, VehicleStatus, Equipment, HistoryEntry } from './types.ts';
+import { Vehicle, VehicleStatus, Equipment, HistoryEntry, UserProfile } from './types.ts';
 import { INITIAL_VEHICLES } from './constants.ts';
 import Dashboard from './components/Dashboard.tsx';
 import VehicleCard from './components/VehicleCard.tsx';
 import VehicleDetails from './components/VehicleDetails.tsx';
 import VehicleForm from './components/VehicleForm.tsx';
+import ProfileEditor from './components/ProfileEditor.tsx';
 import { analyzeFleetStatus } from './services/geminiService.ts';
 
 type View = 'fleet' | 'alerts' | 'admin';
@@ -14,23 +15,35 @@ const App: React.FC = () => {
   const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isAddingVehicle, setIsAddingVehicle] = useState(false);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [activeView, setActiveView] = useState<View>('fleet');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentUser, setCurrentUser] = useState('Lieutenant Miller');
+  
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    id: 'u1',
+    firstName: 'John',
+    lastName: 'Miller',
+    grade: 'Lieutenant',
+    assignment: 'Caserne Centre',
+    email: 'j.miller@pompiers.gouv.fr',
+    avatarUrl: 'https://images.unsplash.com/photo-1600486913747-55e5470d6f40?auto=format&fit=crop&q=80&w=200'
+  });
+
+  const currentUserDisplayName = `${userProfile.grade} ${userProfile.lastName}`;
 
   // New state for modal context
   const [initialDetailsTab, setInitialDetailsTab] = useState<'info' | 'inventory' | 'history'>('info');
   const [highlightedEquipmentId, setHighlightedEquipmentId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (selectedVehicle || isAddingVehicle) {
+    if (selectedVehicle || isAddingVehicle || isEditingProfile) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
     }
-  }, [selectedVehicle, isAddingVehicle]);
+  }, [selectedVehicle, isAddingVehicle, isEditingProfile]);
 
   const filteredVehicles = vehicles.filter(v => 
     v.callSign.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -55,7 +68,7 @@ const App: React.FC = () => {
     return {
       date: now.toISOString().split('T')[0],
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      performedBy: currentUser
+      performedBy: currentUserDisplayName
     };
   };
 
@@ -201,13 +214,21 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen bg-slate-100 ${selectedVehicle || isAddingVehicle ? 'h-screen' : 'pb-32'}`}>
+    <div className={`min-h-screen bg-slate-100 ${selectedVehicle || isAddingVehicle || isEditingProfile ? 'h-screen' : 'pb-32'}`}>
       <nav className="fire-gradient text-white py-4 px-5 sticky top-0 z-[40] shadow-xl rounded-b-3xl">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
-          <div className="flex flex-col">
-            <h1 className="text-xl font-black tracking-tighter uppercase leading-none">FireTrack Pro</h1>
-            <p className="text-[9px] opacity-70 font-black uppercase tracking-widest mt-1">{currentUser}</p>
-          </div>
+          <button 
+            onClick={() => setIsEditingProfile(true)}
+            className="flex items-center space-x-3 text-left active:scale-95 transition-transform"
+          >
+            <div className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden shadow-lg bg-white/10">
+              <img src={userProfile.avatarUrl} alt="User" className="w-full h-full object-cover" />
+            </div>
+            <div className="flex flex-col">
+              <h1 className="text-xl font-black tracking-tighter uppercase leading-none">FireTrack Pro</h1>
+              <p className="text-[9px] opacity-70 font-black uppercase tracking-widest mt-1">{currentUserDisplayName}</p>
+            </div>
+          </button>
           <button 
             onClick={triggerFleetAnalysis}
             disabled={isAnalyzing}
@@ -344,8 +365,15 @@ const App: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <AdminActionCard label="Personnels" icon={<svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>} />
-              <AdminActionCard label="Configuration" icon={<svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" /></svg>} />
+              <AdminActionCard 
+                label="Personnels" 
+                onClick={() => setIsEditingProfile(true)}
+                icon={<svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>} 
+              />
+              <AdminActionCard 
+                label="Configuration" 
+                icon={<svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" /></svg>} 
+              />
             </div>
           </div>
         )}
@@ -355,7 +383,7 @@ const App: React.FC = () => {
         <VehicleDetails 
           vehicle={selectedVehicle} 
           onClose={() => setSelectedVehicle(null)} 
-          currentUser={currentUser}
+          currentUser={currentUserDisplayName}
           onUpdateStatus={handleUpdateStatus}
           onUpdateVehicleImage={handleUpdateVehicleImage}
           onAddEquipment={handleAddEquipment}
@@ -373,7 +401,15 @@ const App: React.FC = () => {
         />
       )}
 
-      {!selectedVehicle && !isAddingVehicle && (
+      {isEditingProfile && (
+        <ProfileEditor 
+          profile={userProfile}
+          onSave={(updated) => { setUserProfile(updated); setIsEditingProfile(false); }}
+          onCancel={() => setIsEditingProfile(false)}
+        />
+      )}
+
+      {!selectedVehicle && !isAddingVehicle && !isEditingProfile && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-xl border border-white/10 flex items-center p-2 rounded-[32px] z-[30] shadow-2xl w-[90%] max-w-sm">
           <button 
             onClick={() => setActiveView('fleet')}
@@ -407,8 +443,11 @@ const App: React.FC = () => {
   );
 };
 
-const AdminActionCard: React.FC<{ label: string; icon: React.ReactNode }> = ({ label, icon }) => (
-  <button className="bg-white p-6 rounded-[32px] border-2 border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-red-100 transition-all active:scale-95">
+const AdminActionCard: React.FC<{ label: string; icon: React.ReactNode; onClick?: () => void }> = ({ label, icon, onClick }) => (
+  <button 
+    onClick={onClick}
+    className="bg-white p-6 rounded-[32px] border-2 border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-red-100 transition-all active:scale-95"
+  >
     <div className="text-slate-400 mb-2">{icon}</div>
     <span className="text-[10px] font-black uppercase tracking-widest text-slate-800">{label}</span>
   </button>
