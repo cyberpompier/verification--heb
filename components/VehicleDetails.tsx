@@ -50,6 +50,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [detailedEqId, setDetailedEqId] = useState<string | null>(null);
   const [editingEqIdForImage, setEditingEqIdForImage] = useState<string | null>(null);
 
+  // Inspection Logic
+  const startTimeRef = useRef(Date.now());
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryShown, setSummaryShown] = useState(false);
+  const [inspectionDuration, setInspectionDuration] = useState("");
+
   const equipmentFileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const today = new Date().toISOString().split('T')[0];
@@ -65,6 +71,23 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [newLog, setNewLog] = useState<{
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
+
+  // Calculate Progress
+  const totalItems = vehicle.equipment.length;
+  const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
+  const progressPercentage = totalItems === 0 ? 0 : Math.round((verifiedItems / totalItems) * 100);
+
+  // Monitor progress for auto-popup
+  useEffect(() => {
+    if (progressPercentage === 100 && totalItems > 0 && !summaryShown) {
+      const diff = Date.now() - startTimeRef.current;
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      setInspectionDuration(`${minutes}m ${seconds}s`);
+      setShowSummary(true);
+      setSummaryShown(true);
+    }
+  }, [progressPercentage, totalItems, summaryShown]);
 
   // Auto-scroll to highlighted equipment when inventory tab is active
   useEffect(() => {
@@ -108,6 +131,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       return a.name.localeCompare(b.name);
     });
   }, [vehicle.equipment, equipmentSearch, selectedLocation, today]);
+
+  const anomaliesList = useMemo(() => {
+    return vehicle.equipment.filter(e => e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0));
+  }, [vehicle.equipment]);
 
   const selectedDetailedEq = useMemo(() => 
     vehicle.equipment.find(e => e.id === detailedEqId),
@@ -280,6 +307,23 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
           {activeTab === 'inventory' && (
             <div className="space-y-5 animate-fade-in">
+              {/* Progress Bar */}
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                <div className="flex justify-between items-end mb-2">
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Progression de l'inspection</span>
+                  <div className="flex items-baseline space-x-1">
+                    <span className="text-xl font-black text-slate-900">{progressPercentage}%</span>
+                    <span className="text-[10px] font-bold text-slate-400">({verifiedItems}/{totalItems})</span>
+                  </div>
+                </div>
+                <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                   <div 
+                     className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(220,38,38,0.4)]" 
+                     style={{ width: `${progressPercentage}%` }} 
+                   />
+                </div>
+              </div>
+
               {/* Search and Filters */}
               <div className="space-y-3">
                 <div className="flex items-center space-x-2">
@@ -577,6 +621,56 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                 <button onClick={() => setConfirmClearAnomalyId(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px]">Annuler</button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Inspection Summary Modal */}
+        {showSummary && (
+          <div className="absolute inset-0 z-[200] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in">
+             <div className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl animate-scale-in overflow-hidden relative border-4 border-white/20">
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-500 to-red-600" />
+                
+                <div className="text-center mb-8">
+                   <div className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-green-100">
+                      <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                   </div>
+                   <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">Vérification Terminée</h2>
+                   <div className="inline-flex items-center space-x-2 bg-slate-100 px-4 py-2 rounded-xl">
+                      <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                      <span className="text-[11px] font-black uppercase text-slate-600">Temps passé : {inspectionDuration}</span>
+                   </div>
+                </div>
+
+                <div className="space-y-4 mb-8">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Rapport d'anomalies</h4>
+                  <div className="max-h-48 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+                    {anomaliesList.length === 0 ? (
+                      <div className="flex items-center space-x-3 p-4 bg-green-50 rounded-2xl border border-green-100">
+                         <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
+                         </div>
+                         <span className="text-sm font-black text-green-800">R.A.S - Matériel Conforme</span>
+                      </div>
+                    ) : (
+                      anomaliesList.map(eq => (
+                        <div key={eq.id} className="flex items-start space-x-3 p-3 bg-orange-50 rounded-2xl border border-orange-100">
+                           <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <span className="text-xs">⚠️</span>
+                           </div>
+                           <div className="flex-1">
+                              <p className="text-xs font-black text-slate-900 uppercase">{eq.name}</p>
+                              <p className="text-[10px] font-medium text-orange-800 mt-1 leading-tight">{eq.anomalyTags?.join(', ') || 'Signalement'}: {eq.anomaly}</p>
+                           </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <button onClick={() => setShowSummary(false)} className="w-full bg-slate-900 text-white py-5 rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-slate-800">
+                   Terminer l'inspection
+                </button>
+             </div>
           </div>
         )}
 
