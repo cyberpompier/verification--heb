@@ -55,10 +55,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [showSummary, setShowSummary] = useState(false);
   const [summaryShown, setSummaryShown] = useState(false);
   const [inspectionDuration, setInspectionDuration] = useState("");
+  const today = new Date().toISOString().split('T')[0];
 
   const equipmentFileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const today = new Date().toISOString().split('T')[0];
   
   const [newEq, setNewEq] = useState<Omit<Equipment, 'id'>>({
     name: '', category: '', location: '', quantity: 1, condition: 'Bon',
@@ -76,14 +76,40 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const totalItems = vehicle.equipment.length;
   const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
   const progressPercentage = totalItems === 0 ? 0 : Math.round((verifiedItems / totalItems) * 100);
+  
+  // Track if vehicle was already complete when opened to adjust UI
+  const wasAlreadyCompleteRef = useRef(progressPercentage === 100);
+
+  // Identify who verified the vehicle based on history
+  const completionInfo = useMemo(() => {
+    if (progressPercentage < 100) return null;
+    
+    // Find the last relevant action today
+    const relevantHistory = vehicle.history.filter(h => 
+        h.date === today && (h.type === 'equipment' || h.type === 'status')
+    );
+    
+    // Since history is typically prepended (newest first), take the first one
+    if (relevantHistory.length > 0) {
+        return {
+            verifier: relevantHistory[0].performedBy,
+            timestamp: relevantHistory[0].timestamp
+        };
+    }
+    
+    // Fallback to current user if no history found (edge case)
+    return { verifier: currentUser, timestamp: 'Aujourd\'hui' };
+  }, [progressPercentage, vehicle.history, today, currentUser]);
 
   // Monitor progress for auto-popup
   useEffect(() => {
     if (progressPercentage === 100 && totalItems > 0 && !summaryShown) {
-      const diff = Date.now() - startTimeRef.current;
-      const minutes = Math.floor(diff / 60000);
-      const seconds = Math.floor((diff % 60000) / 1000);
-      setInspectionDuration(`${minutes}m ${seconds}s`);
+      if (!wasAlreadyCompleteRef.current) {
+         const diff = Date.now() - startTimeRef.current;
+         const minutes = Math.floor(diff / 60000);
+         const seconds = Math.floor((diff % 60000) / 1000);
+         setInspectionDuration(`${minutes}m ${seconds}s`);
+      }
       setShowSummary(true);
       setSummaryShown(true);
     }
@@ -310,7 +336,13 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               {/* Progress Bar */}
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
                 <div className="flex justify-between items-end mb-2">
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Progression de l'inspection</span>
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                    {progressPercentage === 100 && completionInfo ? (
+                        <>VÉRIFIÉ PAR {completionInfo.verifier.toUpperCase()}</>
+                    ) : (
+                        <>Progression de l'inspection</>
+                    )}
+                  </span>
                   <div className="flex items-baseline space-x-1">
                     <span className="text-xl font-black text-slate-900">{progressPercentage}%</span>
                     <span className="text-[10px] font-bold text-slate-400">({verifiedItems}/{totalItems})</span>
@@ -635,9 +667,19 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                       <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                    </div>
                    <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">Vérification Terminée</h2>
-                   <div className="inline-flex items-center space-x-2 bg-slate-100 px-4 py-2 rounded-xl">
-                      <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                      <span className="text-[11px] font-black uppercase text-slate-600">Temps passé : {inspectionDuration}</span>
+                   <div className="flex flex-col items-center gap-2">
+                       {completionInfo && (
+                           <div className="inline-flex items-center space-x-2 bg-green-50 px-4 py-2 rounded-xl border border-green-100">
+                               <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                               <span className="text-[11px] font-black uppercase text-green-800">Par : {completionInfo.verifier}</span>
+                           </div>
+                       )}
+                       {!wasAlreadyCompleteRef.current && inspectionDuration && (
+                           <div className="inline-flex items-center space-x-2 bg-slate-100 px-4 py-2 rounded-xl">
+                              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                              <span className="text-[11px] font-black uppercase text-slate-600">Temps passé : {inspectionDuration}</span>
+                           </div>
+                       )}
                    </div>
                 </div>
 
@@ -668,7 +710,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                 </div>
 
                 <button onClick={() => setShowSummary(false)} className="w-full bg-slate-900 text-white py-5 rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-slate-800">
-                   Terminer l'inspection
+                   Fermer
                 </button>
              </div>
           </div>
