@@ -14,6 +14,12 @@ export enum VehicleType {
   COMMAND = 'Véhicule de Commandement (VLC)'
 }
 
+export enum UserRole {
+  ADMIN = 'ADMIN',
+  OPERATOR = 'OPERATOR',
+  READER = 'READER'
+}
+
 export interface UserProfile {
   id: string;
   firstName: string;
@@ -22,6 +28,7 @@ export interface UserProfile {
   assignment: string;
   email: string;
   avatarUrl: string;
+  role: UserRole;
 }
 
 export interface EquipmentDocument {
@@ -35,14 +42,14 @@ export interface Equipment {
   id: string;
   name: string;
   category: string;
-  location: string; // Emplacement physique (ex: Coffre 1, Tiroir Jaune, Toit)
+  location: string;
   quantity: number;
   lastChecked: string;
   condition: 'Bon' | 'Moyen' | 'Mauvais' | 'À remplacer';
   notes?: string;
   anomaly?: string;
   anomalyTags?: string[];
-  reportedBy?: string; // Nom du personnel ayant signalé l'anomalie
+  reportedBy?: string;
   thumbnailUrl?: string;
   manualUrl?: string;
   videoUrl?: string;
@@ -54,7 +61,7 @@ export interface HistoryEntry {
   date: string;
   timestamp: string;
   type: 'status' | 'maintenance' | 'note' | 'equipment';
-  status?: 'success' | 'danger' | 'warning' | 'info'; // Pour le code couleur
+  status?: 'success' | 'danger' | 'warning' | 'info';
   description: string;
   performedBy: string;
   equipmentId?: string;

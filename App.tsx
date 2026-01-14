@@ -1,39 +1,305 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Vehicle, VehicleStatus, Equipment, HistoryEntry, UserProfile } from './types.ts';
-import { INITIAL_VEHICLES } from './constants.ts';
+import { Vehicle, VehicleStatus, Equipment, HistoryEntry, UserProfile, UserRole } from './types.ts';
 import Dashboard from './components/Dashboard.tsx';
 import VehicleCard from './components/VehicleCard.tsx';
 import VehicleDetails from './components/VehicleDetails.tsx';
 import VehicleForm from './components/VehicleForm.tsx';
 import ProfileEditor from './components/ProfileEditor.tsx';
+import Auth from './components/Auth.tsx';
 import { analyzeFleetStatus } from './services/geminiService.ts';
+import { supabase, TABLES } from './lib/supabase.ts';
 
 type View = 'fleet' | 'alerts' | 'admin';
 
+// --- MAPPING FUNCTIONS ---
+
+const mapProfileFromDB = (data: any): UserProfile => ({
+  id: data.id,
+  firstName: data.first_name || '',
+  lastName: data.last_name || '',
+  grade: data.grade || 'Sapeur',
+  assignment: data.assignment || 'Non affecté',
+  email: data.email || '',
+  avatarUrl: data.avatar_url || 'https://images.unsplash.com/photo-1600486913747-55e5470d6f40?w=200',
+  role: (data.role as UserRole) || UserRole.OPERATOR
+});
+
+const mapProfileToDB = (profile: UserProfile) => ({
+  id: profile.id,
+  first_name: profile.firstName,
+  last_name: profile.lastName,
+  grade: profile.grade,
+  assignment: profile.assignment,
+  email: profile.email,
+  avatar_url: profile.avatarUrl,
+  role: profile.role
+});
+
+const mapEquipmentFromDB = (data: any): Equipment => ({
+  id: data.id,
+  name: data.name,
+  category: data.category,
+  location: data.location,
+  quantity: data.quantity,
+  lastChecked: data.last_checked,
+  condition: data.condition,
+  notes: data.notes,
+  anomaly: data.anomaly,
+  anomalyTags: data.anomaly_tags || [],
+  reportedBy: data.reported_by,
+  thumbnailUrl: data.thumbnail_url,
+  manualUrl: data.manual_url,
+  videoUrl: data.video_url,
+  documents: data.documents || []
+});
+
+const mapEquipmentToDB = (eq: Partial<Equipment>, vehicleId?: string) => ({
+  ...(vehicleId && { vehicle_id: vehicleId }),
+  name: eq.name,
+  category: eq.category,
+  location: eq.location,
+  quantity: eq.quantity,
+  last_checked: eq.lastChecked,
+  condition: eq.condition,
+  notes: eq.notes,
+  anomaly: eq.anomaly,
+  anomaly_tags: eq.anomalyTags,
+  reported_by: eq.reportedBy,
+  thumbnail_url: eq.thumbnailUrl,
+  manual_url: eq.manualUrl,
+  video_url: eq.videoUrl,
+  documents: eq.documents
+});
+
+const mapHistoryFromDB = (data: any): HistoryEntry => ({
+  id: data.id,
+  date: data.date,
+  timestamp: data.timestamp,
+  type: data.type,
+  status: data.status,
+  description: data.description,
+  performedBy: data.performed_by,
+  equipmentId: data.equipment_id
+});
+
+const mapVehicleFromDB = (data: any): Vehicle => ({
+  id: data.id,
+  callSign: data.call_sign,
+  type: data.type,
+  status: data.status,
+  mileage: data.mileage,
+  location: data.location,
+  lastService: data.last_service,
+  crewCapacity: data.crew_capacity,
+  imageUrl: data.image_url,
+  equipment: (data.equipment || []).map(mapEquipmentFromDB),
+  history: (data.history || []).map(mapHistoryFromDB)
+});
+
 const App: React.FC = () => {
-  const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isAddingVehicle, setIsAddingVehicle] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isFirstConnection, setIsFirstConnection] = useState(false);
   const [activeView, setActiveView] = useState<View>('fleet');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
-  const [userProfile, setUserProfile] = useState<UserProfile>({
-    id: 'u1',
-    firstName: 'John',
-    lastName: 'Miller',
-    grade: 'Lieutenant',
-    assignment: 'Caserne Centre',
-    email: 'j.miller@pompiers.gouv.fr',
-    avatarUrl: 'https://images.unsplash.com/photo-1600486913747-55e5470d6f40?auto=format&fit=crop&q=80&w=200'
-  });
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
-  const currentUserDisplayName = `${userProfile.grade} ${userProfile.lastName}`;
+  const isAdmin = userProfile?.role === UserRole.ADMIN;
+  const isReader = userProfile?.role === UserRole.READER;
+  const canPerformChecks = userProfile?.role === UserRole.ADMIN || userProfile?.role === UserRole.OPERATOR;
 
-  // New state for modal context
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else {
+        setUserProfile(null);
+        setVehicles([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from(TABLES.PROFILES)
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Erreur profil:', error);
+    } else if (data) {
+      const profile = mapProfileFromDB(data);
+      setUserProfile(profile);
+      if (profile.lastName === 'Pompier' && profile.firstName === 'Utilisateur') {
+        setIsEditingProfile(true);
+        setIsFirstConnection(true);
+      }
+    } else {
+      const defaultProfile: UserProfile = {
+        id: userId,
+        firstName: 'Utilisateur',
+        lastName: 'Pompier',
+        grade: 'Sapeur',
+        assignment: 'Non affecté',
+        email: session?.user?.email || '',
+        avatarUrl: 'https://images.unsplash.com/photo-1600486913747-55e5470d6f40?w=200',
+        role: UserRole.OPERATOR
+      };
+      setUserProfile(defaultProfile);
+      await supabase.from(TABLES.PROFILES).upsert(mapProfileToDB(defaultProfile));
+      setIsEditingProfile(true);
+      setIsFirstConnection(true);
+    }
+    fetchVehicles();
+  };
+
+  const fetchVehicles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.VEHICLES)
+        .select(`
+          *,
+          equipment: ${TABLES.EQUIPMENT} (*),
+          history: ${TABLES.HISTORY} (*)
+        `)
+        .order('call_sign', { ascending: true });
+
+      if (error) throw error;
+      const mappedVehicles = (data || []).map(mapVehicleFromDB);
+      setVehicles(mappedVehicles);
+      
+      // Mettre à jour le véhicule sélectionné s'il est ouvert
+      if (selectedVehicle) {
+        const updated = mappedVehicles.find(v => v.id === selectedVehicle.id);
+        if (updated) setSelectedVehicle(updated);
+      }
+    } catch (err) {
+      console.error('Erreur chargement engins:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveProfile = async (updatedProfile: UserProfile) => {
+    try {
+      const dbData = mapProfileToDB(updatedProfile);
+      const { error } = await supabase
+        .from(TABLES.PROFILES)
+        .update(dbData)
+        .eq('id', updatedProfile.id);
+      
+      if (error) throw error;
+      setUserProfile(updatedProfile);
+      setIsEditingProfile(false);
+      setIsFirstConnection(false);
+    } catch (err) {
+      console.error('Erreur sauvegarde profil:', err);
+      alert('Erreur lors de la sauvegarde du profil.');
+    }
+  };
+
+  const handleSaveVehicle = async (vehicleData: any) => {
+    if (!isAdmin) return;
+    try {
+      const dbVehicleData = {
+        call_sign: vehicleData.callSign,
+        type: vehicleData.type,
+        status: vehicleData.status,
+        mileage: vehicleData.mileage,
+        location: vehicleData.location,
+        last_service: vehicleData.lastService,
+        crew_capacity: vehicleData.crewCapacity,
+        image_url: vehicleData.imageUrl
+      };
+
+      const { error } = await supabase
+        .from(TABLES.VEHICLES)
+        .insert([dbVehicleData]);
+      
+      if (error) throw error;
+      fetchVehicles();
+      setIsAddingVehicle(false);
+    } catch (err) {
+      console.error('Erreur ajout véhicule:', err);
+    }
+  };
+
+  const handleAddEquipment = async (vehicleId: string, equipment: Equipment) => {
+    if (!isAdmin) return;
+    try {
+      const dbEq = mapEquipmentToDB(equipment, vehicleId);
+      const { error } = await supabase.from(TABLES.EQUIPMENT).insert([dbEq]);
+      if (error) throw error;
+      fetchVehicles();
+    } catch (err) {
+      console.error('Erreur ajout matériel:', err);
+    }
+  };
+
+  const handleRemoveEquipment = async (vehicleId: string, equipmentId: string) => {
+    if (!isAdmin) return;
+    try {
+      const { error } = await supabase.from(TABLES.EQUIPMENT).delete().eq('id', equipmentId);
+      if (error) throw error;
+      fetchVehicles();
+    } catch (err) {
+      console.error('Erreur suppression matériel:', err);
+    }
+  };
+
+  const handleUpdateEquipment = async (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => {
+    if (!canPerformChecks) return;
+    try {
+      const dbUpdates = mapEquipmentToDB(updates);
+      const { error } = await supabase.from(TABLES.EQUIPMENT).update(dbUpdates).eq('id', equipmentId);
+      if (error) throw error;
+      fetchVehicles();
+    } catch (err) {
+      console.error('Erreur mise à jour matériel:', err);
+    }
+  };
+
+  const handleAddHistoryEntry = async (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => {
+    if (!canPerformChecks) return;
+    try {
+      const meta = getHistoryMeta();
+      const dbEntry = {
+        vehicle_id: vehicleId,
+        date: entry.date,
+        timestamp: meta.timestamp,
+        type: entry.type,
+        status: entry.status || 'info',
+        description: entry.description,
+        performed_by: meta.performed_by,
+        equipment_id: entry.equipmentId
+      };
+      const { error } = await supabase.from(TABLES.HISTORY).insert([dbEntry]);
+      if (error) throw error;
+      fetchVehicles();
+    } catch (err) {
+      console.error('Erreur ajout historique:', err);
+    }
+  };
+
+  const currentUserDisplayName = userProfile ? `${userProfile.grade} ${userProfile.lastName}` : 'Chargement...';
+
   const [initialDetailsTab, setInitialDetailsTab] = useState<'info' | 'inventory' | 'history'>('info');
   const [highlightedEquipmentId, setHighlightedEquipmentId] = useState<string | null>(null);
 
@@ -50,11 +316,10 @@ const App: React.FC = () => {
     v.type.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Get all anomalies across the fleet for the alerts view
   const fleetAnomalies = useMemo(() => {
     const alerts: { vehicle: Vehicle; equipment: Equipment }[] = [];
     vehicles.forEach(v => {
-      v.equipment.forEach(e => {
+      v.equipment?.forEach(e => {
         if (e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0)) {
           alerts.push({ vehicle: v, equipment: e });
         }
@@ -68,135 +333,35 @@ const App: React.FC = () => {
     return {
       date: now.toISOString().split('T')[0],
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      performedBy: currentUserDisplayName
+      performed_by: currentUserDisplayName
     };
   };
 
-  const handleAddVehicle = (newVehicleData: Omit<Vehicle, 'id' | 'equipment' | 'history'>) => {
-    const meta = getHistoryMeta();
-    const newVehicle: Vehicle = {
-      ...newVehicleData,
-      id: Math.random().toString(36).substr(2, 9),
-      equipment: [],
-      history: [{
-        id: Math.random().toString(36).substr(2, 9),
-        ...meta,
-        type: 'status',
-        status: 'success',
-        description: "Mise en service initiale de l'engin."
-      }]
-    };
-    setVehicles(prev => [newVehicle, ...prev]);
-    setIsAddingVehicle(false);
-    setActiveView('fleet');
-  };
-
-  const handleUpdateStatus = (id: string, newStatus: VehicleStatus) => {
+  const handleUpdateStatus = async (id: string, newStatus: VehicleStatus) => {
+    if (!canPerformChecks) return;
     const meta = getHistoryMeta();
     let entryStatus: HistoryEntry['status'] = 'info';
     if (newStatus === VehicleStatus.AVAILABLE) entryStatus = 'success';
     if (newStatus === VehicleStatus.MAINTENANCE) entryStatus = 'warning';
     if (newStatus === VehicleStatus.OUT_OF_SERVICE) entryStatus = 'danger';
 
-    const historyEntry: HistoryEntry = {
-      id: Math.random().toString(36).substr(2, 9),
-      ...meta,
+    const historyEntry = {
+      vehicle_id: id,
+      date: meta.date,
+      timestamp: meta.timestamp,
       type: 'status',
       status: entryStatus,
-      description: `État mis à jour vers : ${newStatus}.`
+      description: `État mis à jour vers : ${newStatus}.`,
+      performed_by: meta.performed_by
     };
 
-    setVehicles(prev => prev.map(v => 
-      v.id === id ? { ...v, status: newStatus, history: [historyEntry, ...v.history] } : v
-    ));
-    if (selectedVehicle?.id === id) {
-      setSelectedVehicle(prev => prev ? { ...prev, status: newStatus, history: [historyEntry, ...prev.history] } : null);
-    }
-  };
-
-  const handleUpdateVehicleImage = (id: string, newImageUrl: string) => {
-    setVehicles(prev => prev.map(v => v.id === id ? { ...v, imageUrl: newImageUrl } : v));
-    if (selectedVehicle?.id === id) {
-      setSelectedVehicle(prev => prev ? { ...prev, imageUrl: newImageUrl } : null);
-    }
-  };
-
-  const handleAddEquipment = (vehicleId: string, equipment: Equipment) => {
-    const meta = getHistoryMeta();
-    const historyEntry: HistoryEntry = {
-      id: Math.random().toString(36).substr(2, 9),
-      ...meta,
-      type: 'equipment',
-      status: 'info',
-      description: `Nouvel équipement ajouté : ${equipment.name} (${equipment.quantity} unités).`
-    };
-
-    setVehicles(prev => prev.map(v => 
-      v.id === vehicleId ? { ...v, equipment: [...v.equipment, equipment], history: [historyEntry, ...v.history] } : v
-    ));
-    if (selectedVehicle?.id === vehicleId) {
-      setSelectedVehicle(prev => prev ? { ...prev, equipment: [...prev.equipment, equipment], history: [historyEntry, ...prev.history] } : null);
-    }
-  };
-
-  const handleUpdateEquipment = (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => {
-    const currentVehicle = vehicles.find(v => v.id === vehicleId);
-    const eqItem = currentVehicle?.equipment.find(e => e.id === equipmentId);
-    const eqName = eqItem?.name || 'Équipement';
-    const meta = getHistoryMeta();
-    let historyEntry: HistoryEntry | null = null;
-    
-    if (updates.hasOwnProperty('anomaly') || (updates.hasOwnProperty('anomalyTags'))) {
-      if (updates.anomaly === undefined && (!updates.anomalyTags || updates.anomalyTags.length === 0)) {
-        historyEntry = {
-          id: Math.random().toString(36).substr(2, 9), ...meta, type: 'equipment', status: 'success',
-          description: `Anomalie résolue pour ${eqName}. Remise en service conforme.`
-        };
-      } else if (updates.anomaly || (updates.anomalyTags && updates.anomalyTags.length > 0)) {
-        const tagsStr = updates.anomalyTags?.join(', ') || '';
-        historyEntry = {
-          id: Math.random().toString(36).substr(2, 9), ...meta, type: 'equipment', status: 'danger',
-          description: `Anomalie signalée pour ${eqName}${tagsStr ? ' [' + tagsStr + ']' : ''} : ${updates.anomaly || 'Signalement sans texte'}`
-        };
-      }
-    } else if (updates.lastChecked && Object.keys(updates).length === 1) {
-      historyEntry = {
-        id: Math.random().toString(36).substr(2, 9), ...meta, type: 'equipment', status: 'info',
-        description: `Matériel vérifié : ${eqName}.`
-      };
-    } else if (updates.name || updates.quantity || updates.location) {
-        historyEntry = {
-            id: Math.random().toString(36).substr(2, 9), ...meta, type: 'note', status: 'info',
-            description: `Mise à jour des informations de l'équipement : ${eqName}.`
-        };
-    }
-
-    setVehicles(prev => prev.map(v => 
-      v.id === vehicleId ? { 
-            ...v, 
-            equipment: v.equipment.map(e => e.id === equipmentId ? { ...e, ...updates } : e),
-            history: historyEntry ? [historyEntry, ...v.history] : v.history
-          } : v
-    ));
-    if (selectedVehicle?.id === vehicleId) {
-      setSelectedVehicle(prev => prev ? { 
-        ...prev, 
-        equipment: prev.equipment.map(e => e.id === equipmentId ? { ...e, ...updates } : e),
-        history: historyEntry ? [historyEntry, ...prev.history] : prev.history
-      } : null);
-    }
-  };
-
-  const handleAddHistoryEntry = (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => {
-    const meta = getHistoryMeta();
-    const fullEntry: HistoryEntry = { ...entry, ...meta, id: Math.random().toString(36).substr(2, 9) };
-    setVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, history: [fullEntry, ...v.history] } : v));
-    if (selectedVehicle?.id === vehicleId) {
-      setSelectedVehicle(prev => prev ? { ...prev, history: [fullEntry, ...prev.history] } : null);
-    }
+    await supabase.from(TABLES.VEHICLES).update({ status: newStatus }).eq('id', id);
+    await supabase.from(TABLES.HISTORY).insert([historyEntry]);
+    fetchVehicles();
   };
 
   const triggerFleetAnalysis = async () => {
+    if (!isAdmin) return;
     setIsAnalyzing(true);
     setAiAnalysis(null);
     try {
@@ -213,6 +378,25 @@ const App: React.FC = () => {
     setSelectedVehicle(vehicle);
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  if (!session) {
+    return <Auth />;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-red-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Initialisation opérationnelle...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen bg-slate-100 ${selectedVehicle || isAddingVehicle || isEditingProfile ? 'h-screen' : 'pb-32'}`}>
       <nav className="fire-gradient text-white py-4 px-5 sticky top-0 z-[40] shadow-xl rounded-b-3xl">
@@ -222,21 +406,28 @@ const App: React.FC = () => {
             className="flex items-center space-x-3 text-left active:scale-95 transition-transform"
           >
             <div className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden shadow-lg bg-white/10">
-              <img src={userProfile.avatarUrl} alt="User" className="w-full h-full object-cover" />
+              <img src={userProfile?.avatarUrl} alt="User" className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
               <h1 className="text-xl font-black tracking-tighter uppercase leading-none">FireTrack Pro</h1>
-              <p className="text-[9px] opacity-70 font-black uppercase tracking-widest mt-1">{currentUserDisplayName}</p>
+              <p className="text-[9px] opacity-70 font-black uppercase tracking-widest mt-1">{currentUserDisplayName} • {userProfile?.role}</p>
             </div>
           </button>
-          <button 
-            onClick={triggerFleetAnalysis}
-            disabled={isAnalyzing}
-            className="bg-white/20 backdrop-blur-md text-white border border-white/30 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase flex items-center space-x-2 shadow-lg active:scale-95 disabled:opacity-50 transition-all"
-          >
-            {isAnalyzing ? <div className="animate-spin h-3 w-3 border-2 border-white/30 border-t-white rounded-full" /> : <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z" /></svg>}
-            <span>Audit IA</span>
-          </button>
+          <div className="flex items-center space-x-2">
+            {isAdmin && (
+              <button 
+                onClick={triggerFleetAnalysis}
+                disabled={isAnalyzing}
+                className="bg-white/20 backdrop-blur-md text-white border border-white/30 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase flex items-center space-x-2 shadow-lg active:scale-95 disabled:opacity-50 transition-all"
+              >
+                {isAnalyzing ? <div className="animate-spin h-3 w-3 border-2 border-white/30 border-t-white rounded-full" /> : <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3.005 3.005 0 013.75-2.906z" /></svg>}
+                <span>Audit IA</span>
+              </button>
+            )}
+            <button onClick={handleLogout} className="p-2 bg-black/20 rounded-xl text-white active:scale-90 transition-all">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -329,14 +520,6 @@ const App: React.FC = () => {
                         <p className="mt-2 text-[11px] font-medium text-slate-600 line-clamp-2 leading-tight">
                           {equipment.anomaly || 'Aucune description détaillée.'}
                         </p>
-                        {equipment.reportedBy && (
-                          <div className="mt-3 flex items-center space-x-2 border-t border-slate-50 pt-2">
-                             <div className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center">
-                                <svg className="w-2.5 h-2.5 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
-                             </div>
-                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-tighter">Signalé par : {equipment.reportedBy}</span>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </button>
@@ -346,7 +529,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeView === 'admin' && (
+        {activeView === 'admin' && isAdmin && (
           <div className="animate-fade-in space-y-6">
             <div className="bg-white p-8 rounded-[40px] border-2 border-slate-200 shadow-xl text-center">
               <div className="w-24 h-24 bg-red-100 rounded-[32px] flex items-center justify-center mx-auto mb-6">
@@ -363,18 +546,6 @@ const App: React.FC = () => {
                 <span>Ajouter un nouvel engin</span>
               </button>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <AdminActionCard 
-                label="Personnels" 
-                onClick={() => setIsEditingProfile(true)}
-                icon={<svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg>} 
-              />
-              <AdminActionCard 
-                label="Configuration" 
-                icon={<svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" /></svg>} 
-              />
-            </div>
           </div>
         )}
       </main>
@@ -384,28 +555,28 @@ const App: React.FC = () => {
           vehicle={selectedVehicle} 
           onClose={() => setSelectedVehicle(null)} 
           currentUser={currentUserDisplayName}
+          userRole={userProfile?.role || UserRole.READER}
           onUpdateStatus={handleUpdateStatus}
-          onUpdateVehicleImage={handleUpdateVehicleImage}
-          onAddEquipment={handleAddEquipment}
-          onUpdateEquipment={handleUpdateEquipment}
-          onAddHistoryEntry={handleAddHistoryEntry}
+          onUpdateVehicleImage={() => {}} 
+          onAddEquipment={handleAddEquipment} 
+          onRemoveEquipment={handleRemoveEquipment}
+          onUpdateEquipment={handleUpdateEquipment} 
+          onAddHistoryEntry={handleAddHistoryEntry} 
           initialTab={initialDetailsTab}
           highlightEquipmentId={highlightedEquipmentId}
         />
       )}
 
-      {isAddingVehicle && (
-        <VehicleForm 
-          onSave={handleAddVehicle}
-          onCancel={() => setIsAddingVehicle(false)}
-        />
+      {isAddingVehicle && isAdmin && (
+        <VehicleForm onSave={handleSaveVehicle} onCancel={() => setIsAddingVehicle(false)} />
       )}
 
-      {isEditingProfile && (
+      {isEditingProfile && userProfile && (
         <ProfileEditor 
-          profile={userProfile}
-          onSave={(updated) => { setUserProfile(updated); setIsEditingProfile(false); }}
-          onCancel={() => setIsEditingProfile(false)}
+          profile={userProfile} 
+          onSave={handleSaveProfile} 
+          onCancel={() => !isFirstConnection && setIsEditingProfile(false)}
+          isFirstSetup={isFirstConnection}
         />
       )}
 
@@ -430,27 +601,19 @@ const App: React.FC = () => {
             </div>
             <span className="text-[8px] font-black uppercase mt-1">Alertes</span>
           </button>
-          <button 
-            onClick={() => setActiveView('admin')}
-            className={`flex-1 flex flex-col items-center py-3 transition-colors ${activeView === 'admin' ? 'text-red-500' : 'text-white/40'}`}
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" /></svg>
-            <span className="text-[8px] font-black uppercase mt-1">Admin</span>
-          </button>
+          {isAdmin && (
+            <button 
+              onClick={() => setActiveView('admin')}
+              className={`flex-1 flex flex-col items-center py-3 transition-colors ${activeView === 'admin' ? 'text-red-500' : 'text-white/40'}`}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" /></svg>
+              <span className="text-[8px] font-black uppercase mt-1">Admin</span>
+            </button>
+          )}
         </nav>
       )}
     </div>
   );
 };
-
-const AdminActionCard: React.FC<{ label: string; icon: React.ReactNode; onClick?: () => void }> = ({ label, icon, onClick }) => (
-  <button 
-    onClick={onClick}
-    className="bg-white p-6 rounded-[32px] border-2 border-slate-100 shadow-sm flex flex-col items-center justify-center hover:border-red-100 transition-all active:scale-95"
-  >
-    <div className="text-slate-400 mb-2">{icon}</div>
-    <span className="text-[10px] font-black uppercase tracking-widest text-slate-800">{label}</span>
-  </button>
-);
 
 export default App;

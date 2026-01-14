@@ -1,14 +1,16 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument } from '../types';
+import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument, UserRole } from '../types';
 
 interface VehicleDetailsProps {
   vehicle: Vehicle;
   onClose: () => void;
   currentUser: string;
+  userRole: UserRole;
   onUpdateStatus: (id: string, status: VehicleStatus) => void;
   onUpdateVehicleImage: (id: string, newImageUrl: string) => void;
   onAddEquipment: (vehicleId: string, equipment: Equipment) => void;
+  onRemoveEquipment: (vehicleId: string, equipmentId: string) => void;
   onUpdateEquipment: (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => void;
   onAddHistoryEntry: (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => void;
   initialTab?: 'info' | 'inventory' | 'history';
@@ -32,104 +34,54 @@ const Highlight: React.FC<{ text: string; search: string }> = ({ text, search })
 };
 
 const VehicleDetails: React.FC<VehicleDetailsProps> = ({ 
-  vehicle, onClose, currentUser, onUpdateStatus, onUpdateVehicleImage,
-  onAddEquipment, onUpdateEquipment, onAddHistoryEntry,
+  vehicle, onClose, currentUser, userRole, onUpdateStatus, onUpdateVehicleImage,
+  onAddEquipment, onRemoveEquipment, onUpdateEquipment, onAddHistoryEntry,
   initialTab = 'info', highlightEquipmentId = null
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'inventory' | 'history'>(initialTab);
   const [isAdding, setIsAdding] = useState(false);
   const [editingEqId, setEditingEqId] = useState<string | null>(null);
   const [isAddingLog, setIsAddingLog] = useState(false);
-  const [reportingAnomalyId, setReportingAnomalyId] = useState<string | null>(null);
-  const [confirmClearAnomalyId, setConfirmClearAnomalyId] = useState<string | null>(null);
-  const [tempAnomaly, setTempAnomaly] = useState("");
-  const [tempAnomalyTags, setTempAnomalyTags] = useState<string[]>([]);
-  const [tempMissingQuantity, setTempMissingQuantity] = useState(1);
   const [equipmentSearch, setEquipmentSearch] = useState("");
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-  const [detailedEqId, setDetailedEqId] = useState<string | null>(null);
   const [editingEqIdForImage, setEditingEqIdForImage] = useState<string | null>(null);
+  const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  
+  // History Filter State
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'anomalie' | 'verification' | 'divers'>('all');
 
-  // Inspection Logic
-  const startTimeRef = useRef(Date.now());
-  const [showSummary, setShowSummary] = useState(false);
-  const [summaryShown, setSummaryShown] = useState(false);
-  const [inspectionDuration, setInspectionDuration] = useState("");
+  // Reporting State
+  const [reportingEqId, setReportingEqId] = useState<string | null>(null);
+  const [reportDescription, setReportDescription] = useState("");
+  const [reportTags, setReportTags] = useState<string[]>([]);
+  const [reportQuantity, setReportQuantity] = useState<number>(1);
+
+  // States for new document form
+  const [docName, setDocName] = useState('');
+  const [docUrl, setDocUrl] = useState('');
+
+  const isAdmin = userRole === UserRole.ADMIN;
+  const isReader = userRole === UserRole.READER;
+  const canModify = userRole === UserRole.ADMIN || userRole === UserRole.OPERATOR;
+
   const today = new Date().toISOString().split('T')[0];
-
   const equipmentFileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const [newEq, setNewEq] = useState<Omit<Equipment, 'id'>>({
     name: '', category: '', location: '', quantity: 1, condition: 'Bon',
-    lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', documents: []
+    lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', manualUrl: '', documents: []
   });
 
   const [editEqForm, setEditEqForm] = useState<Partial<Equipment>>({});
-  const [newDoc, setNewDoc] = useState<{ name: string; url: string; type: EquipmentDocument['type'] }>({ name: '', url: '', type: 'link' });
 
   const [newLog, setNewLog] = useState<{
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
 
-  // Calculate Progress
   const totalItems = vehicle.equipment.length;
   const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
   const progressPercentage = totalItems === 0 ? 0 : Math.round((verifiedItems / totalItems) * 100);
-  
-  // Track if vehicle was already complete when opened to adjust UI
-  const wasAlreadyCompleteRef = useRef(progressPercentage === 100);
-
-  // Identify who verified the vehicle based on history
-  const completionInfo = useMemo(() => {
-    if (progressPercentage < 100) return null;
-    
-    // Find the last relevant action today
-    const relevantHistory = vehicle.history.filter(h => 
-        h.date === today && (h.type === 'equipment' || h.type === 'status')
-    );
-    
-    // Since history is typically prepended (newest first), take the first one
-    if (relevantHistory.length > 0) {
-        return {
-            verifier: relevantHistory[0].performedBy,
-            timestamp: relevantHistory[0].timestamp
-        };
-    }
-    
-    // Fallback to current user if no history found (edge case)
-    return { verifier: currentUser, timestamp: 'Aujourd\'hui' };
-  }, [progressPercentage, vehicle.history, today, currentUser]);
-
-  // Monitor progress for auto-popup
-  useEffect(() => {
-    if (progressPercentage === 100 && totalItems > 0 && !summaryShown) {
-      if (!wasAlreadyCompleteRef.current) {
-         const diff = Date.now() - startTimeRef.current;
-         const minutes = Math.floor(diff / 60000);
-         const seconds = Math.floor((diff % 60000) / 1000);
-         setInspectionDuration(`${minutes}m ${seconds}s`);
-      }
-      setShowSummary(true);
-      setSummaryShown(true);
-    }
-  }, [progressPercentage, totalItems, summaryShown]);
-
-  // Auto-scroll to highlighted equipment when inventory tab is active
-  useEffect(() => {
-    if (activeTab === 'inventory' && highlightEquipmentId) {
-      setTimeout(() => {
-        const element = document.getElementById(`eq-${highlightEquipmentId}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          element.classList.add('ring-4', 'ring-red-500/50', 'ring-offset-2');
-          setTimeout(() => {
-            element.classList.remove('ring-4', 'ring-red-500/50', 'ring-offset-2');
-          }, 2000);
-        }
-      }, 300);
-    }
-  }, [activeTab, highlightEquipmentId]);
 
   const uniqueLocations = useMemo(() => {
     const locs = new Set(vehicle.equipment.map(e => e.location));
@@ -146,10 +98,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         item.location.toLowerCase().includes(query)
       );
     }
-    if (selectedLocation) {
-      items = items.filter(item => item.location === selectedLocation);
-    }
-
+    if (selectedLocation) items = items.filter(item => item.location === selectedLocation);
     return items.sort((a, b) => {
       const aChecked = a.lastChecked === today;
       const bChecked = b.lastChecked === today;
@@ -158,82 +107,143 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     });
   }, [vehicle.equipment, equipmentSearch, selectedLocation, today]);
 
-  const anomaliesList = useMemo(() => {
-    return vehicle.equipment.filter(e => e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0));
-  }, [vehicle.equipment]);
+  // Sorting and Filtering History
+  const sortedAndFilteredHistory = useMemo(() => {
+    // 1. Sort by Date Descending (Newest first)
+    const sorted = [...vehicle.history].sort((a, b) => {
+      const timeA = new Date(`${a.date}T${a.timestamp || '00:00'}`).getTime();
+      const timeB = new Date(`${b.date}T${b.timestamp || '00:00'}`).getTime();
+      return timeB - timeA;
+    });
 
-  const selectedDetailedEq = useMemo(() => 
-    vehicle.equipment.find(e => e.id === detailedEqId),
-    [vehicle.equipment, detailedEqId]
-  );
+    // 2. Filter
+    if (historyFilter === 'anomalie') {
+      return sorted.filter(h => 
+        h.status === 'warning' || 
+        h.status === 'danger' || 
+        h.type === 'maintenance' || 
+        h.type === 'equipment'
+      );
+    }
+    if (historyFilter === 'verification') {
+      return sorted.filter(h => 
+        h.type === 'status' && 
+        h.status !== 'warning' && 
+        h.status !== 'danger'
+      );
+    }
+    if (historyFilter === 'divers') {
+      return sorted.filter(h => h.type === 'note');
+    }
+    
+    return sorted;
+  }, [vehicle.history, historyFilter]);
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEq.name || !newEq.category) return;
-    onAddEquipment(vehicle.id, {
-      ...newEq,
-      id: Math.random().toString(36).substr(2, 9),
-      documents: newEq.documents || []
-    } as Equipment);
+    if (!isAdmin || !newEq.name) return;
+    
+    // Add Equipment
+    onAddEquipment(vehicle.id, { ...newEq, id: '' } as Equipment);
+
+    // Add History Entry for "Divers"
+    onAddHistoryEntry(vehicle.id, {
+      type: 'note',
+      status: 'info',
+      description: `AJOUT INVENTAIRE : ${newEq.name} (x${newEq.quantity}) ajouté à ${newEq.location}.`,
+      date: today
+    });
+
     setIsAdding(false);
-    setNewEq({ name: '', category: '', location: '', quantity: 1, condition: 'Bon', lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', documents: [] });
+    setNewEq({ name: '', category: '', location: '', quantity: 1, condition: 'Bon', lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', manualUrl: '', documents: [] });
+    setDocName('');
+    setDocUrl('');
   };
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingEqId || !editEqForm.name) return;
+    if (!canModify || !editingEqId) return;
     onUpdateEquipment(vehicle.id, editingEqId, editEqForm);
     setEditingEqId(null);
-    setEditEqForm({});
+    setDocName('');
+    setDocUrl('');
+  };
+
+  const handleDeleteSubmit = () => {
+    if (!isAdmin || !editingEqId) return;
+    if (window.confirm('Confirmer la suppression définitive de cet équipement ?')) {
+        const item = vehicle.equipment.find(e => e.id === editingEqId);
+        onRemoveEquipment(vehicle.id, editingEqId);
+        
+        // Add History Entry for "Divers" (Retrait)
+        if (item) {
+             onAddHistoryEntry(vehicle.id, {
+                type: 'note',
+                status: 'info',
+                description: `RETRAIT INVENTAIRE : ${item.name} retiré du véhicule.`,
+                date: today
+             });
+        }
+        setEditingEqId(null);
+        setEditEqForm({});
+    }
   };
 
   const startEditing = (item: Equipment) => {
+    if (!canModify) return;
     setEditingEqId(item.id);
     setEditEqForm(item);
     setIsAdding(false);
   };
 
-  const addDocToForm = () => {
-    if (!newDoc.name || !newDoc.url) return;
-    const doc: EquipmentDocument = { ...newDoc, id: Math.random().toString(36).substr(2, 5) };
+  const handleVerifyItem = (itemId: string) => {
+    const item = vehicle.equipment.find(e => e.id === itemId);
+    if (!item) return;
+
+    const isAlreadyChecked = item.lastChecked === today;
+    
+    // Update the item
+    onUpdateEquipment(vehicle.id, itemId, { lastChecked: today });
+
+    // Automatic Log if this verification completes the 100%
+    if (!isAlreadyChecked) {
+      // Calculate new verified count. (verifiedItems is based on props, so it doesn't include the current one yet)
+      const newVerifiedCount = verifiedItems + 1;
+      
+      if (newVerifiedCount === totalItems && totalItems > 0) {
+        onAddHistoryEntry(vehicle.id, {
+          type: 'status',
+          status: 'success',
+          description: 'VÉRIFICATION COMPLÈTE - Inventaire validé à 100%.',
+          date: today
+        });
+      }
+    }
+  };
+
+  const handleAddDoc = () => {
+    if (!docName || !docUrl) return;
+    const newDoc: EquipmentDocument = {
+      id: Date.now().toString(),
+      name: docName,
+      url: docUrl,
+      type: 'pdf'
+    };
     if (editingEqId) {
-      setEditEqForm(prev => ({ ...prev, documents: [...(prev.documents || []), doc] }));
+       setEditEqForm(prev => ({...prev, documents: [...(prev.documents || []), newDoc]}));
     } else {
-      setNewEq(prev => ({ ...prev, documents: [...(prev.documents || []), doc] }));
+       setNewEq(prev => ({...prev, documents: [...(prev.documents || []), newDoc]}));
     }
-    setNewDoc({ name: '', url: '', type: 'link' });
+    setDocName('');
+    setDocUrl('');
   };
 
-  const removeDocFromForm = (id: string) => {
-    if (editingEqId) {
-      setEditEqForm(prev => ({ ...prev, documents: (prev.documents || []).filter(d => d.id !== id) }));
-    } else {
-      setNewEq(prev => ({ ...prev, documents: (prev.documents || []).filter(d => d.id !== id) }));
-    }
-  };
-
-  const toggleAnomalyTag = (tag: string) => {
-    setTempAnomalyTags(prev => 
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    );
-  };
-
-  const handleSaveAnomaly = (eqId: string) => {
-    let anomalyText = tempAnomaly;
-    if (tempAnomalyTags.includes('Manquant')) {
-      anomalyText = `[x${tempMissingQuantity} Manquant(s)] ${anomalyText}`.trim();
-    }
-    onUpdateEquipment(vehicle.id, eqId, { 
-      anomaly: anomalyText || (tempAnomalyTags.length > 0 ? "Signalé" : undefined), 
-      anomalyTags: tempAnomalyTags,
-      reportedBy: currentUser,
-      lastChecked: today,
-      condition: 'À remplacer'
-    });
-    setReportingAnomalyId(null);
-    setTempAnomaly("");
-    setTempAnomalyTags([]);
-    setTempMissingQuantity(1);
+  const handleRemoveDoc = (docId: string) => {
+     if (editingEqId) {
+        setEditEqForm(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
+     } else {
+        setNewEq(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
+     }
   };
 
   const handleEquipmentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,11 +253,14 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       reader.onloadend = () => {
         const base64 = reader.result as string;
         if (editingEqIdForImage) {
+            // Updating from list view
             onUpdateEquipment(vehicle.id, editingEqIdForImage, { thumbnailUrl: base64 });
             setEditingEqIdForImage(null);
         } else if (editingEqId) {
+            // Updating inside edit form
             setEditEqForm(prev => ({ ...prev, thumbnailUrl: base64 }));
         } else {
+            // Updating inside add form
             setNewEq(prev => ({ ...prev, thumbnailUrl: base64 }));
         }
       };
@@ -255,30 +268,93 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     }
   };
 
-  const triggerImageUpload = (eqId: string | null = null) => {
-    setEditingEqIdForImage(eqId);
-    equipmentFileInputRef.current?.click();
-  };
-
-  const handleAddLogSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newLog.description) return;
-    onAddHistoryEntry(vehicle.id, newLog);
-    setIsAddingLog(false);
-    setNewLog({ type: 'note', description: '', date: today, equipmentId: '' });
-  };
-
-  const inputClasses = "w-full text-sm p-3 rounded-xl bg-slate-50 border-2 border-slate-100 font-bold outline-none ring-red-500/20 focus:ring-2 focus:border-red-500 text-slate-900 placeholder-slate-400 transition-all";
-
-  const getEntryColorClasses = (status?: string) => {
-    switch (status) {
-      case 'success': return 'border-green-300 bg-green-50/50 shadow-green-100';
-      case 'danger': return 'border-red-300 bg-red-50/50 shadow-red-100';
-      case 'warning': return 'border-orange-300 bg-orange-50/50 shadow-orange-100';
-      case 'info': return 'border-blue-300 bg-blue-50/50 shadow-blue-100';
-      default: return 'border-slate-200 bg-white shadow-slate-100';
+  // Reporting Handlers
+  const handleOpenReport = (item: Equipment) => {
+    if (reportingEqId === item.id) {
+        setReportingEqId(null);
+    } else {
+        setReportingEqId(item.id);
+        setReportDescription(item.anomaly || "");
+        setReportTags(item.anomalyTags || []);
+        setReportQuantity(1);
+        setExpandedDocId(null);
     }
   };
+
+  const handleReportSubmit = (itemId: string) => {
+    const isMissing = reportTags.includes('MANQUANT');
+    const quantityText = isMissing ? ` (Qté: ${reportQuantity})` : '';
+    // We incorporate the quantity into the description so it persists
+    // Si pas de description et pas de tags, on considère que c'est vide
+    const finalDescription = reportDescription ? `${reportDescription}${quantityText}` : "";
+
+    const originalItem = vehicle.equipment.find(e => e.id === itemId);
+    const hadAnomaly = originalItem && (!!originalItem.anomaly || (originalItem.anomalyTags && originalItem.anomalyTags.length > 0));
+    const hasNewAnomaly = finalDescription.length > 0 || reportTags.length > 0;
+    const itemName = originalItem?.name || 'Matériel';
+
+    onUpdateEquipment(vehicle.id, itemId, {
+        anomaly: finalDescription,
+        anomalyTags: reportTags
+    });
+    
+    // Create automatic history log
+    if (hasNewAnomaly) {
+       onAddHistoryEntry(vehicle.id, {
+           date: new Date().toISOString().split('T')[0],
+           type: 'equipment',
+           status: 'warning',
+           description: `ANOMALIE SIGNALÉE - ${itemName} : ${reportTags.join(', ')}${quantityText}. ${reportDescription}`,
+           equipmentId: itemId
+       });
+    } else if (hadAnomaly && !hasNewAnomaly) {
+        // Log pour le retour à la normale
+        onAddHistoryEntry(vehicle.id, {
+            date: new Date().toISOString().split('T')[0],
+            type: 'maintenance',
+            status: 'success',
+            description: `RÉSOLUTION - ${itemName} : Retour à la normale (Anomalie levée).`,
+            equipmentId: itemId
+        });
+    }
+
+    setReportingEqId(null);
+  };
+
+  // Helper pour clôturer rapidement
+  const handleQuickResolve = (itemId: string) => {
+      const originalItem = vehicle.equipment.find(e => e.id === itemId);
+      
+      onUpdateEquipment(vehicle.id, itemId, {
+          anomaly: "",
+          anomalyTags: []
+      });
+
+      if (originalItem) {
+          onAddHistoryEntry(vehicle.id, {
+            date: new Date().toISOString().split('T')[0],
+            type: 'maintenance',
+            status: 'success',
+            description: `RÉSOLUTION RAPIDE - ${originalItem.name} : Incident clôturé.`,
+            equipmentId: itemId
+        });
+      }
+      setReportingEqId(null);
+  };
+
+  const toggleReportTag = (tag: string) => {
+    setReportTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const getYoutubeId = (url: string) => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  };
+
+  const inputClasses = "w-full text-xs p-3 rounded-xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-red-500 text-slate-900 transition-all placeholder:text-slate-400/80";
+  const labelClasses = "block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1";
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md animate-fade-in">
@@ -314,8 +390,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                   {Object.values(VehicleStatus).map(status => (
                     <button 
                       key={status} 
+                      disabled={isReader}
                       onClick={() => onUpdateStatus(vehicle.id, status)} 
-                      className={`py-4 px-3 rounded-2xl text-[11px] font-black border-2 transition-all shadow-sm ${vehicle.status === status ? 'bg-red-600 border-red-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                      className={`py-4 px-3 rounded-2xl text-[11px] font-black border-2 transition-all shadow-sm ${vehicle.status === status ? 'bg-red-600 border-red-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'} ${isReader ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {status}
                     </button>
@@ -336,180 +413,219 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               {/* Progress Bar */}
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
                 <div className="flex justify-between items-end mb-2">
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                    {progressPercentage === 100 && completionInfo ? (
-                        <>VÉRIFIÉ PAR {completionInfo.verifier.toUpperCase()}</>
-                    ) : (
-                        <>Progression de l'inspection</>
-                    )}
-                  </span>
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Inspection de l'inventaire</span>
                   <div className="flex items-baseline space-x-1">
                     <span className="text-xl font-black text-slate-900">{progressPercentage}%</span>
-                    <span className="text-[10px] font-bold text-slate-400">({verifiedItems}/{totalItems})</span>
                   </div>
                 </div>
                 <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
                    <div 
-                     className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-700 ease-out shadow-[0_0_10px_rgba(220,38,38,0.4)]" 
+                     className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-700 ease-out" 
                      style={{ width: `${progressPercentage}%` }} 
                    />
                 </div>
               </div>
 
-              {/* Search and Filters */}
+              {/* Search and Action Bar */}
               <div className="space-y-3">
                 <div className="flex items-center space-x-2">
                   <div className="relative flex-1">
-                    <input type="text" placeholder="Rechercher..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-xs py-3 pl-10 pr-4 bg-white border-2 border-slate-200 rounded-2xl outline-none focus:border-red-600 transition-all font-bold shadow-sm text-slate-900" />
+                    <input type="text" placeholder="Rechercher..." value={equipmentSearch} onChange={e => setEquipmentSearch(e.target.value)} className="w-full text-xs py-3 pl-10 pr-4 bg-white border-2 border-slate-200 rounded-2xl outline-none focus:border-red-600 transition-all font-bold shadow-sm" />
                     <svg className="w-4 h-4 text-slate-300 absolute left-4 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth="3"/></svg>
                   </div>
-                  <button onClick={() => { setIsAdding(!isAdding); setEditingEqId(null); }} className={`p-3 rounded-2xl border-2 transition-all shadow-sm ${isAdding ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-red-600 hover:border-red-600'}`}>
-                    <svg className={`w-5 h-5 transition-transform ${isAdding ? 'rotate-45' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="3"/></svg>
-                  </button>
+                  {isAdmin && (
+                    <button onClick={() => { setIsAdding(!isAdding); setEditingEqId(null); setEditingEqIdForImage(null); }} className={`p-3 rounded-2xl border-2 transition-all shadow-sm ${isAdding ? 'bg-slate-900 text-white border-slate-900' : 'bg-white border-slate-200 text-red-600'}`}>
+                      <svg className={`w-5 h-5 transition-transform ${isAdding ? 'rotate-45' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="3"/></svg>
+                    </button>
+                  )}
                 </div>
 
-                {/* Location Tags Picker */}
-                <div className="flex space-x-2 overflow-x-auto pb-2 scrollbar-hide">
-                  <button 
-                    onClick={() => setSelectedLocation(null)}
-                    className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all border-2 shadow-sm ${!selectedLocation ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}
-                  >
-                    Tous
-                  </button>
-                  {uniqueLocations.map(loc => (
+                {/* Location Tags - Horizontal Scroll */}
+                <div className="flex space-x-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-hide">
                     <button 
-                      key={loc}
-                      onClick={() => setSelectedLocation(loc)}
-                      className={`flex-shrink-0 px-4 py-2 rounded-xl text-[9px] font-black uppercase transition-all border-2 shadow-sm ${selectedLocation === loc ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}
+                      onClick={() => setSelectedLocation(null)}
+                      className={`flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${!selectedLocation ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200'}`}
                     >
-                      {loc}
+                      Tout
                     </button>
-                  ))}
+                    {uniqueLocations.map(loc => (
+                      <button 
+                        key={loc}
+                        onClick={() => setSelectedLocation(selectedLocation === loc ? null : loc)}
+                        className={`flex-shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border-2 ${selectedLocation === loc ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200'}`}
+                      >
+                        {loc}
+                      </button>
+                    ))}
                 </div>
               </div>
 
-              {/* Add/Edit Forms */}
+              {/* Formulaire d'ajout / édition style "PWA Clean" */}
               {(isAdding || editingEqId) && (
-                <form onSubmit={editingEqId ? handleEditSubmit : handleAddSubmit} className="bg-white p-5 rounded-3xl border-2 border-slate-200 space-y-4 shadow-xl animate-slide-up">
-                  <h4 className="text-[10px] font-black text-red-600 uppercase tracking-widest">{editingEqId ? 'Modifier matériel' : 'Nouveau matériel'}</h4>
+                <form onSubmit={editingEqId ? handleEditSubmit : handleAddSubmit} className="bg-white p-6 rounded-[32px] border-2 border-slate-900 shadow-xl space-y-5 animate-slide-up">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-red-600 mb-2">{editingEqId ? 'ÉDITER MATÉRIEL' : 'NOUVEAU MATÉRIEL'}</h4>
                   
-                  {/* Base Info */}
-                  <div className="flex items-center space-x-4">
-                    <button type="button" onClick={() => triggerImageUpload(editingEqId)} className="w-16 h-16 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex items-center justify-center overflow-hidden active:bg-slate-100">
-                      {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? 
-                        <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className="w-full h-full object-cover" /> : 
-                        <svg className="w-6 h-6 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="3"/></svg>
-                      }
-                    </button>
-                    <div className="flex-1">
-                      <input 
-                        type="text" 
-                        placeholder="Nom de l'équipement" 
-                        required 
-                        className={inputClasses}
-                        value={editingEqId ? (editEqForm.name || '') : newEq.name} 
-                        onChange={e => editingEqId ? setEditEqForm({...editEqForm, name: e.target.value}) : setNewEq({...newEq, name: e.target.value})} 
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input 
-                      type="text" 
-                      placeholder="Catégorie" 
-                      required 
-                      className={inputClasses}
-                      value={editingEqId ? (editEqForm.category || '') : newEq.category} 
-                      onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
-                    />
-                    
-                    {/* Emplacement Selector & Creation */}
-                    <div className="space-y-2">
-                      <div className="relative group">
-                        <input 
-                          type="text" 
-                          placeholder="Emplacement" 
-                          required 
-                          className={inputClasses}
-                          value={editingEqId ? (editEqForm.location || '') : newEq.location} 
-                          onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
-                        />
-                        <svg className="w-4 h-4 text-slate-300 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" /></svg>
-                      </div>
+                  <div className="space-y-4">
+                    {/* Image + Name Row */}
+                    <div className="flex items-start gap-4">
+                      {/* Image Uploader */}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setEditingEqIdForImage(null); // Ensure we are targeting form state
+                          equipmentFileInputRef.current?.click();
+                        }}
+                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:border-red-500 hover:text-red-500 transition-colors flex-shrink-0 overflow-hidden relative"
+                      >
+                         {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? (
+                            <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className="w-full h-full object-cover" />
+                         ) : (
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5" /></svg>
+                         )}
+                      </button>
                       
-                      {uniqueLocations.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                           {uniqueLocations.slice(0, 8).map(loc => (
-                             <button
-                                key={loc}
-                                type="button"
-                                onClick={() => editingEqId ? setEditEqForm({...editEqForm, location: loc}) : setNewEq({...newEq, location: loc})}
-                                className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase border transition-all ${
-                                  (editingEqId ? editEqForm.location : newEq.location) === loc 
-                                    ? 'bg-slate-900 border-slate-900 text-white' 
-                                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
-                                }`}
-                             >
-                               {loc}
-                             </button>
-                           ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                     <div className="flex flex-col">
-                        <label className="text-[8px] font-black text-slate-400 uppercase mb-1">Quantité</label>
-                        <input 
-                            type="number" 
-                            className={inputClasses}
-                            value={editingEqId ? (editEqForm.quantity || 1) : newEq.quantity} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, quantity: parseInt(e.target.value) || 0}) : setNewEq({...newEq, quantity: parseInt(e.target.value) || 0})} 
-                        />
-                     </div>
-                     <div className="flex flex-col">
-                        <label className="text-[8px] font-black text-slate-400 uppercase mb-1">Vidéo (YouTube URL)</label>
+                      {/* Name Input - Large */}
+                      <div className="flex-1">
                         <input 
                             type="text" 
-                            placeholder="https://youtube.com/..."
-                            className={inputClasses}
+                            placeholder="Nom de l'équipement"
+                            required 
+                            className="w-full h-20 sm:h-24 text-lg p-4 rounded-3xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-red-500 text-slate-900 transition-all placeholder:text-slate-300"
+                            value={editingEqId ? editEqForm.name : newEq.name} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, name: e.target.value}) : setNewEq({...newEq, name: e.target.value})} 
+                        />
+                      </div>
+                    </div>
+
+                    {/* Category & Location */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="Catégorie"
+                        className={inputClasses} 
+                        value={editingEqId ? editEqForm.category : newEq.category} 
+                        onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
+                      />
+                      <input 
+                        type="text" 
+                        required 
+                        placeholder="Emplacement"
+                        className={inputClasses} 
+                        value={editingEqId ? editEqForm.location : newEq.location} 
+                        onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
+                      />
+                    </div>
+
+                    {/* Quantity & Video */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelClasses}>QUANTITÉ</label>
+                        <input 
+                            type="number" 
+                            required 
+                            className={inputClasses} 
+                            value={editingEqId ? editEqForm.quantity : newEq.quantity} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, quantity: parseInt(e.target.value)}) : setNewEq({...newEq, quantity: parseInt(e.target.value)})} 
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClasses}>VIDÉO (YOUTUBE URL)</label>
+                        <input 
+                            type="text" 
+                            placeholder="https://youtube.com/..." 
+                            className={inputClasses} 
                             value={editingEqId ? (editEqForm.videoUrl || '') : newEq.videoUrl} 
                             onChange={e => editingEqId ? setEditEqForm({...editEqForm, videoUrl: e.target.value}) : setNewEq({...newEq, videoUrl: e.target.value})} 
                         />
-                     </div>
+                      </div>
+                    </div>
+
+                    {/* Condition & State */}
+                    <div>
+                         <label className={labelClasses}>ÉTAT ACTUEL</label>
+                         <select className={inputClasses} value={editingEqId ? editEqForm.condition : newEq.condition} onChange={e => editingEqId ? setEditEqForm({...editEqForm, condition: e.target.value as any}) : setNewEq({...newEq, condition: e.target.value as any})}>
+                            <option>Bon</option><option>Moyen</option><option>Mauvais</option><option>À remplacer</option>
+                         </select>
+                    </div>
+                    
+                    {/* Notes Field (Added) */}
+                    <div>
+                        <label className={labelClasses}>NOTES / OBSERVATIONS</label>
+                        <textarea 
+                            className={inputClasses + " h-24 resize-none"} 
+                            placeholder="Instructions particulières, détails..."
+                            value={editingEqId ? (editEqForm.notes || '') : newEq.notes} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, notes: e.target.value}) : setNewEq({...newEq, notes: e.target.value})} 
+                        />
+                    </div>
+
+                    {/* Documentation Section */}
+                    <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
+                        <label className={labelClasses}>DOCUMENTATION (MANUELS, PDF)</label>
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                            <input 
+                                type="text" 
+                                placeholder="Nom du doc" 
+                                className="w-full text-xs p-3 rounded-xl bg-white border-2 border-slate-200 font-bold outline-none focus:border-red-500"
+                                value={docName}
+                                onChange={e => setDocName(e.target.value)}
+                            />
+                            <input 
+                                type="text" 
+                                placeholder="URL du doc" 
+                                className="w-full text-xs p-3 rounded-xl bg-white border-2 border-slate-200 font-bold outline-none focus:border-red-500"
+                                value={docUrl}
+                                onChange={e => setDocUrl(e.target.value)}
+                            />
+                        </div>
+                        <button 
+                            type="button" 
+                            onClick={handleAddDoc} 
+                            className="w-full bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-slate-900/10"
+                        >
+                            AJOUTER AU DOSSIER
+                        </button>
+                        
+                        {/* List of added documents */}
+                        <div className="mt-3 space-y-2">
+                            {((editingEqId ? editEqForm.documents : newEq.documents) || []).map(doc => (
+                                <div key={doc.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                    <div className="flex items-center space-x-2 overflow-hidden">
+                                        <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
+                                        <span className="text-[11px] font-bold text-slate-700 truncate">{doc.name}</span>
+                                    </div>
+                                    <button type="button" onClick={() => handleRemoveDoc(doc.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                   </div>
 
-                  {/* Documents Section */}
-                  <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-100">
-                    <h5 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Documentation (Manuels, PDF)</h5>
-                    <div className="space-y-2">
-                       {(editingEqId ? (editEqForm.documents || []) : (newEq.documents || [])).map(doc => (
-                         <div key={doc.id} className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                           <span className="text-xs font-bold truncate max-w-[150px] text-slate-900">{doc.name}</span>
-                           <button type="button" onClick={() => removeDocFromForm(doc.id)} className="text-red-500 p-1 hover:bg-red-50 rounded transition-colors"><svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"/></svg></button>
-                         </div>
-                       ))}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input type="text" placeholder="Nom du doc" className="text-xs p-2 rounded-lg border border-slate-200 font-bold text-slate-900 bg-white outline-none focus:border-slate-400" value={newDoc.name} onChange={e => setNewDoc({...newDoc, name: e.target.value})} />
-                      <input type="text" placeholder="URL du doc" className="text-xs p-2 rounded-lg border border-slate-200 font-bold text-slate-900 bg-white outline-none focus:border-slate-400" value={newDoc.url} onChange={e => setNewDoc({...newDoc, url: e.target.value})} />
-                    </div>
-                    <button type="button" onClick={addDocToForm} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md active:scale-95 transition-all">Ajouter au dossier</button>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                    <button type="button" onClick={() => { setIsAdding(false); setEditingEqId(null); }} className="text-slate-500 font-black uppercase text-[10px] px-4 py-2 hover:text-slate-800 transition-colors">Annuler</button>
-                    <button type="submit" className="bg-red-600 text-white py-4 px-10 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all">Enregistrer</button>
+                  <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center space-x-2">
+                        <button type="button" onClick={() => { setIsAdding(false); setEditingEqId(null); }} className="text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Annuler</button>
+                        {editingEqId && isAdmin && (
+                            <button type="button" onClick={handleDeleteSubmit} className="text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-50 px-3 py-2 rounded-xl transition-colors">Supprimer</button>
+                        )}
+                      </div>
+                      <button type="submit" className="bg-red-600 text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-red-600/20">
+                         {editingEqId ? 'ENREGISTRER' : 'ENREGISTRER'}
+                      </button>
                   </div>
                 </form>
               )}
 
-              {/* Equipment Cards List */}
+              {/* Cards List */}
               <div className="space-y-4">
                 {filteredAndSortedEquipment.map((item) => {
                   const isCheckedToday = item.lastChecked === today;
                   const hasAnomaly = !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
+                  const showDocs = expandedDocId === item.id;
+                  const isReporting = reportingEqId === item.id;
+
                   return (
                     <div id={`eq-${item.id}`} key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
                       <div className="flex items-start space-x-4">
@@ -525,72 +641,165 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.category}</span>
                             <span className="text-[8px] font-black text-red-600 uppercase bg-red-50 px-2 py-0.5 rounded border border-red-100">📍 {item.location}</span>
                           </div>
+                          {/* Badges Video/PDF/Docs - Condensed if expanded, otherwise detailed */}
+                          {(!showDocs && !isReporting && (item.videoUrl || item.manualUrl || (item.documents && item.documents.length > 0))) && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {item.videoUrl && <span className="text-[8px] font-black text-red-600 uppercase flex items-center bg-red-50 px-2 py-1 rounded-lg border border-red-100"><svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /><path fill="#fff" d="M14 10l-5 3V7l5 3z" /></svg>Vidéo</span>}
+                              {item.manualUrl && <span className="text-[8px] font-black text-blue-600 uppercase flex items-center bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"><svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" /></svg>Notice</span>}
+                              {item.documents?.length > 0 && <span className="text-[8px] font-black text-slate-600 uppercase flex items-center bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">+{item.documents.length} Docs</span>}
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {hasAnomaly && (
-                        <div className="mt-4 bg-orange-600 text-white p-3.5 rounded-2xl flex justify-between items-center shadow-lg shadow-orange-600/10">
-                          <div className="flex-1 min-w-0 pr-4">
-                            <p className="text-[10px] font-black uppercase tracking-wide truncate">⚠️ {item.anomaly || 'Alerte Matériel'}</p>
-                            {item.reportedBy && <p className="text-[8px] font-black uppercase opacity-70 mt-1">Par : {item.reportedBy}</p>}
-                          </div>
-                          <button onClick={() => setConfirmClearAnomalyId(item.id)} className="flex-shrink-0 text-[10px] font-black text-orange-600 bg-white px-4 py-2 rounded-xl uppercase active:scale-95 transition-transform shadow-sm">Rétablir</button>
+                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                        <div className="flex flex-wrap gap-2">
+                           
+                           {/* SIGNALER Button */}
+                           {canModify && (
+                               <button 
+                                 onClick={() => handleOpenReport(item)}
+                                 className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${isReporting ? 'bg-orange-600 text-white border-orange-600' : hasAnomaly ? 'bg-red-600 text-white border-red-600 shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                               >
+                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                 <span>SIGNALER</span>
+                               </button>
+                           )}
+
+                           {/* DOCS Button */}
+                           {(item.videoUrl || item.manualUrl || (item.documents && item.documents.length > 0) || item.notes) && (
+                              <button 
+                                onClick={() => { setExpandedDocId(showDocs ? null : item.id); setReportingEqId(null); }}
+                                className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${showDocs ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                <span>DOCS</span>
+                              </button>
+                           )}
+
+                          {canModify && (
+                            <button onClick={() => startEditing(item)} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 active:scale-90 transition-all shadow-sm"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
+                          )}
+                        </div>
+                        {canModify && (
+                          <button onClick={() => handleVerifyItem(item.id)} className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}>{isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}</button>
+                        )}
+                      </div>
+
+                      {/* Reporting Content */}
+                      {isReporting && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 animate-fade-in bg-orange-50/30 -mx-5 px-5 pb-2">
+                            <div className="bg-white p-4 rounded-2xl border border-orange-100 shadow-sm">
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {['SALE', 'ABÎMÉ', 'MANQUANT', 'INDISPONIBLE'].map(tag => (
+                                        <button
+                                            key={tag}
+                                            onClick={() => toggleReportTag(tag)}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all ${reportTags.includes(tag) ? 'bg-orange-500 text-white border-orange-500 shadow-md' : 'bg-slate-50 text-slate-400 border-slate-200 hover:border-orange-200'}`}
+                                        >
+                                            {tag}
+                                        </button>
+                                    ))}
+                                </div>
+                                {reportTags.includes('MANQUANT') && (
+                                  <div className="mb-3 bg-red-50 p-3 rounded-xl border border-red-100 flex items-center justify-between animate-fade-in">
+                                     <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Quantité manquante</span>
+                                     <div className="flex items-center bg-white rounded-lg border border-red-200 shadow-sm">
+                                        <button
+                                          onClick={() => setReportQuantity(q => Math.max(1, q - 1))}
+                                          className="w-8 h-8 flex items-center justify-center text-red-600 font-bold active:bg-red-50 rounded-l-lg transition-colors"
+                                        >
+                                          -
+                                        </button>
+                                        <span className="w-8 text-center text-sm font-black text-slate-900">{reportQuantity}</span>
+                                        <button
+                                          onClick={() => setReportQuantity(q => q + 1)}
+                                          className="w-8 h-8 flex items-center justify-center text-red-600 font-bold active:bg-red-50 rounded-r-lg transition-colors"
+                                        >
+                                          +
+                                        </button>
+                                     </div>
+                                  </div>
+                                )}
+                                <textarea
+                                    value={reportDescription}
+                                    onChange={(e) => setReportDescription(e.target.value)}
+                                    placeholder="Description de l'incident..."
+                                    className="w-full text-xs p-3 rounded-xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-orange-500 min-h-[80px] text-slate-700 mb-3 resize-none"
+                                />
+                                <div className="flex space-x-3">
+                                    <button
+                                        onClick={() => handleReportSubmit(item.id)}
+                                        className="flex-1 bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all"
+                                    >
+                                        ENREGISTRER
+                                    </button>
+                                    {hasAnomaly && (
+                                      <button
+                                          onClick={() => handleQuickResolve(item.id)}
+                                          className="flex-1 bg-green-600 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all border border-green-700"
+                                      >
+                                          CLÔTURER L'INCIDENT
+                                      </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                       )}
 
-                      {/* Actions Footer */}
-                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                        <div className="flex space-x-2">
-                          <button 
-                            onClick={() => startEditing(item)} 
-                            className="p-2.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 active:scale-90 transition-all shadow-sm"
-                            title="Modifier"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                          </button>
-                          <button 
-                            onClick={() => { setReportingAnomalyId(item.id); setTempAnomaly(item.anomaly || ""); setTempAnomalyTags(item.anomalyTags || []); }} 
-                            className="text-[9px] font-black text-slate-500 uppercase bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl transition-colors border border-slate-200 shadow-sm"
-                          >
-                            Signaler
-                          </button>
-                          <button onClick={() => setDetailedEqId(item.id)} className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl transition-colors border border-blue-100 shadow-sm">Docs</button>
-                        </div>
-                        <button 
-                          onClick={() => onUpdateEquipment(vehicle.id, item.id, { lastChecked: today })} 
-                          className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}
-                        >
-                          {isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
-                        </button>
-                      </div>
+                      {/* Expanded Content */}
+                      {showDocs && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 animate-fade-in bg-slate-50/50 -mx-5 px-5 pb-2">
+                           
+                           {/* Notes Display */}
+                           {item.notes && (
+                             <div className="mb-4 bg-yellow-50 border border-yellow-100 p-3 rounded-xl shadow-sm">
+                               <p className="text-[9px] font-black text-yellow-600 uppercase tracking-widest mb-1.5 flex items-center"><span className="mr-1">📝</span> Notes & Observations</p>
+                               <p className="text-xs font-medium text-slate-800 whitespace-pre-wrap leading-relaxed">{item.notes}</p>
+                             </div>
+                           )}
 
-                      {reportingAnomalyId === item.id && (
-                        <div className="mt-4 bg-slate-50 p-4 rounded-xl border-2 border-orange-200 space-y-4 animate-slide-up shadow-inner">
-                          <div className="flex flex-wrap gap-2">
-                            {['Sale', 'Abîmé', 'Manquant', 'Indisponible'].map(tag => (
-                              <button key={tag} onClick={() => toggleAnomalyTag(tag)} className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${tempAnomalyTags.includes(tag) ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white border-slate-300 text-slate-400 shadow-sm'}`}>{tag}</button>
-                            ))}
-                          </div>
-                          
-                          {tempAnomalyTags.includes('Manquant') && (
-                            <div className="bg-white p-3 rounded-xl border border-orange-100 flex items-center justify-between animate-fade-in">
-                              <span className="text-[10px] font-black text-slate-400 uppercase">Quantité manquante</span>
-                              <div className="flex items-center space-x-4">
-                                <button 
-                                  onClick={() => setTempMissingQuantity(Math.max(1, tempMissingQuantity - 1))}
-                                  className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-black text-slate-600 active:scale-90"
-                                >-</button>
-                                <span className="text-sm font-black text-slate-900 w-4 text-center">{tempMissingQuantity}</span>
-                                <button 
-                                  onClick={() => setTempMissingQuantity(Math.min(item.quantity, tempMissingQuantity + 1))}
-                                  className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-black text-slate-600 active:scale-90"
-                                >+</button>
+                           {/* Video Embed */}
+                           {item.videoUrl && getYoutubeId(item.videoUrl) && (
+                              <div className="mb-4 rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video relative group">
+                                <iframe 
+                                  className="absolute inset-0 w-full h-full"
+                                  src={`https://www.youtube.com/embed/${getYoutubeId(item.videoUrl)}`} 
+                                  title="Video"
+                                  frameBorder="0" 
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                  allowFullScreen
+                                ></iframe>
                               </div>
-                            </div>
-                          )}
+                           )}
 
-                          <textarea placeholder="Description de l'incident..." className="w-full text-xs p-3 bg-white border-2 border-slate-100 rounded-xl h-20 outline-none font-bold shadow-inner text-slate-900" value={tempAnomaly} onChange={e => setTempAnomaly(e.target.value)} />
-                          <button onClick={() => handleSaveAnomaly(item.id)} className="w-full bg-slate-900 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 transition-transform">Enregistrer le rapport</button>
+                           {/* Links List */}
+                           <div className="space-y-2">
+                              {item.manualUrl && (
+                                <a href={item.manualUrl} target="_blank" rel="noopener noreferrer" className="flex items-center p-3 bg-white border border-slate-200 rounded-xl hover:border-blue-400 transition-colors group shadow-sm">
+                                   <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center mr-3 group-hover:scale-110 transition-transform">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                   </div>
+                                   <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-black text-slate-800 uppercase truncate">Manuel Utilisateur</p>
+                                      <p className="text-[10px] text-slate-400 truncate opacity-70">Document principal</p>
+                                   </div>
+                                   <svg className="w-4 h-4 text-slate-300 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                </a>
+                              )}
+                              {item.documents?.map(doc => (
+                                <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center p-3 bg-white border border-slate-200 rounded-xl hover:border-red-400 transition-colors group shadow-sm">
+                                   <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center mr-3 group-hover:scale-110 transition-transform">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                   </div>
+                                   <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-black text-slate-800 uppercase truncate">{doc.name}</p>
+                                      <p className="text-[10px] text-slate-400 truncate opacity-70">Document annexe</p>
+                                   </div>
+                                   <svg className="w-4 h-4 text-slate-300 group-hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                </a>
+                              ))}
+                           </div>
                         </div>
                       )}
                     </div>
@@ -603,166 +812,62 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           {activeTab === 'history' && (
             <div className="space-y-4 animate-fade-in pl-6 relative">
                <div className="absolute left-3 top-0 bottom-0 w-1 bg-slate-200 rounded-full" />
-               <div className="flex justify-between items-center mb-6">
+               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Registre de l'Engin</h4>
-                 <button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[10px] font-black text-red-600 uppercase bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 active:scale-95 transition-all">Ajouter Note</button>
+                 
+                 {/* Filter Buttons */}
+                 <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide -mx-2 px-2 sm:mx-0 sm:px-0">
+                    {['all', 'anomalie', 'verification', 'divers'].map(filter => (
+                        <button 
+                            key={filter}
+                            onClick={() => setHistoryFilter(filter as any)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border transition-all flex-shrink-0 ${historyFilter === filter ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}
+                        >
+                            {filter === 'all' ? 'Tout' : filter}
+                        </button>
+                    ))}
+                 </div>
+
+                 {canModify && <button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[10px] font-black text-red-600 uppercase bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 active:scale-95 transition-all whitespace-nowrap self-start sm:self-auto">Ajouter Note</button>}
                </div>
                
-               {isAddingLog && (
-                  <form onSubmit={handleAddLogSubmit} className="bg-white p-5 rounded-2xl border-2 border-slate-200 space-y-4 mb-8 animate-slide-up shadow-lg">
+               {isAddingLog && canModify && (
+                  <form onSubmit={(e) => { e.preventDefault(); onAddHistoryEntry(vehicle.id, newLog); setIsAddingLog(false); setNewLog({...newLog, description: ''}); }} className="bg-white p-5 rounded-2xl border-2 border-slate-200 space-y-4 mb-8 animate-slide-up shadow-lg">
                     <textarea placeholder="Observation technique ou opérationnelle..." required className="w-full text-sm p-3 rounded-xl border border-slate-100 h-24 outline-none font-bold text-slate-900" value={newLog.description} onChange={e => setNewLog({...newLog, description: e.target.value})} />
                     <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95">Publier</button>
                   </form>
                )}
 
-               {vehicle.history.map((entry) => (
-                 <div key={entry.id} className="relative mb-8 group">
-                    <div className="absolute -left-[1.35rem] top-1 group-hover:scale-125 transition-transform shadow-lg rounded-full z-10">
-                        <div className={`w-6 h-6 rounded-full bg-white border-2 flex items-center justify-center ${entry.status === 'success' ? 'border-green-500' : entry.status === 'danger' ? 'border-red-500' : entry.status === 'warning' ? 'border-orange-500' : 'border-slate-900'}`}>
-                           <div className={`w-1.5 h-1.5 rounded-full ${entry.status === 'success' ? 'bg-green-500' : entry.status === 'danger' ? 'bg-red-500' : entry.status === 'warning' ? 'bg-orange-500' : 'bg-slate-900'}`} />
+               {sortedAndFilteredHistory.length === 0 ? (
+                  <div className="text-center py-8">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Aucun événement pour ce filtre</p>
+                  </div>
+               ) : (
+                  sortedAndFilteredHistory.map((entry) => (
+                    <div key={entry.id} className="relative mb-8 group">
+                        <div className="absolute -left-[1.35rem] top-1 group-hover:scale-125 transition-transform shadow-lg rounded-full z-10">
+                            <div className={`w-6 h-6 rounded-full bg-white border-2 flex items-center justify-center ${entry.status === 'success' ? 'border-green-500' : entry.status === 'danger' ? 'border-red-500' : entry.status === 'warning' ? 'border-orange-500' : 'border-slate-900'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${entry.status === 'success' ? 'bg-green-500' : entry.status === 'danger' ? 'bg-red-500' : entry.status === 'warning' ? 'bg-orange-500' : 'bg-slate-900'}`} />
+                            </div>
+                        </div>
+                        <div className={`p-5 rounded-3xl border-2 transition-all shadow-sm group-hover:shadow-md bg-white`}>
+                          <div className="flex justify-between items-start mb-2">
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{entry.date} <span className="mx-1">•</span> {entry.timestamp}</p>
+                            {entry.type && (
+                                <span className="text-[8px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded uppercase">{entry.type}</span>
+                            )}
+                          </div>
+                          <p className="text-[12px] font-bold text-slate-900 leading-relaxed">{entry.description}</p>
+                          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-200/50">
+                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Signataire : {entry.performedBy}</p>
+                          </div>
                         </div>
                     </div>
-                    <div className={`p-5 rounded-3xl border-2 transition-all shadow-sm group-hover:shadow-md ${getEntryColorClasses(entry.status)}`}>
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{entry.date} <span className="mx-1">•</span> {entry.timestamp}</p>
-                        {entry.status && <span className={`w-2 h-2 rounded-full ${entry.status === 'success' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : entry.status === 'danger' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.4)]' : entry.status === 'warning' ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.4)]' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.4)]'}`} />}
-                      </div>
-                      <p className="text-[12px] font-bold text-slate-900 leading-relaxed">{entry.description}</p>
-                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-200/50">
-                        <p className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Signataire : {entry.performedBy}</p>
-                        <span className="text-[7px] font-black text-slate-400 uppercase">{entry.type}</span>
-                      </div>
-                    </div>
-                 </div>
-               ))}
+                  ))
+               )}
             </div>
           )}
         </div>
-
-        {/* Confirmation Modal */}
-        {confirmClearAnomalyId && (
-          <div className="absolute inset-0 z-[200] bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-8 animate-fade-in text-center">
-            <div className="bg-white rounded-[40px] p-8 w-full max-w-sm shadow-2xl animate-scale-in border-4 border-white/20">
-              <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
-              <h3 className="font-black text-2xl uppercase tracking-tighter mb-4 text-slate-900 leading-none">Rétablissement</h3>
-              <p className="text-slate-500 text-sm mb-10 leading-relaxed font-medium">Confirmez-vous que ce matériel est désormais 100% conforme pour l'intervention ?</p>
-              <div className="space-y-3">
-                <button onClick={() => { onUpdateEquipment(vehicle.id, confirmClearAnomalyId, { anomaly: undefined, anomalyTags: [], reportedBy: undefined, condition: 'Bon', lastChecked: today }); setConfirmClearAnomalyId(null); }} className="w-full bg-green-600 text-white py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl shadow-green-600/20 active:scale-95 transition-all">Valider la conformité</button>
-                <button onClick={() => setConfirmClearAnomalyId(null)} className="w-full py-4 text-slate-400 font-black uppercase text-[10px]">Annuler</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Inspection Summary Modal */}
-        {showSummary && (
-          <div className="absolute inset-0 z-[200] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-4 animate-fade-in">
-             <div className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl animate-scale-in overflow-hidden relative border-4 border-white/20">
-                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-red-500 to-red-600" />
-                
-                <div className="text-center mb-8">
-                   <div className="w-24 h-24 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-green-100">
-                      <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                   </div>
-                   <h2 className="text-2xl font-black uppercase tracking-tighter text-slate-900 mb-2">Vérification Terminée</h2>
-                   <div className="flex flex-col items-center gap-2">
-                       {completionInfo && (
-                           <div className="inline-flex items-center space-x-2 bg-green-50 px-4 py-2 rounded-xl border border-green-100">
-                               <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                               <span className="text-[11px] font-black uppercase text-green-800">Par : {completionInfo.verifier}</span>
-                           </div>
-                       )}
-                       {!wasAlreadyCompleteRef.current && inspectionDuration && (
-                           <div className="inline-flex items-center space-x-2 bg-slate-100 px-4 py-2 rounded-xl">
-                              <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                              <span className="text-[11px] font-black uppercase text-slate-600">Temps passé : {inspectionDuration}</span>
-                           </div>
-                       )}
-                   </div>
-                </div>
-
-                <div className="space-y-4 mb-8">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Rapport d'anomalies</h4>
-                  <div className="max-h-48 overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-                    {anomaliesList.length === 0 ? (
-                      <div className="flex items-center space-x-3 p-4 bg-green-50 rounded-2xl border border-green-100">
-                         <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
-                         </div>
-                         <span className="text-sm font-black text-green-800">R.A.S - Matériel Conforme</span>
-                      </div>
-                    ) : (
-                      anomaliesList.map(eq => (
-                        <div key={eq.id} className="flex items-start space-x-3 p-3 bg-orange-50 rounded-2xl border border-orange-100">
-                           <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                              <span className="text-xs">⚠️</span>
-                           </div>
-                           <div className="flex-1">
-                              <p className="text-xs font-black text-slate-900 uppercase">{eq.name}</p>
-                              <p className="text-[10px] font-medium text-orange-800 mt-1 leading-tight">{eq.anomalyTags?.join(', ') || 'Signalement'}: {eq.anomaly}</p>
-                           </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <button onClick={() => setShowSummary(false)} className="w-full bg-slate-900 text-white py-5 rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl active:scale-95 transition-all hover:bg-slate-800">
-                   Fermer
-                </button>
-             </div>
-          </div>
-        )}
-
-        {/* Detailed Item Modal */}
-        {selectedDetailedEq && (
-          <div className="absolute inset-0 z-[120] bg-slate-50 flex flex-col animate-slide-up">
-            <div className="p-4 border-b bg-white flex items-center shadow-md z-10">
-              <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden mr-4">
-                {selectedDetailedEq.thumbnailUrl ? <img src={selectedDetailedEq.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="text-[14px] font-black uppercase tracking-tight text-slate-900 truncate">{selectedDetailedEq.name}</h3>
-                <span className="text-[9px] font-black text-red-600 uppercase bg-red-50 px-2 py-0.5 rounded-lg border border-red-100">📍 {selectedDetailedEq.location}</span>
-              </div>
-              <button onClick={() => setDetailedEqId(null)} className="p-3 bg-slate-100 rounded-2xl text-slate-500 active:scale-90 transition-all ml-2 shadow-sm border border-slate-200"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-               <section className="bg-white p-5 rounded-3xl border-2 border-slate-200 shadow-sm">
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Documentation Technique</h4>
-                 <div className="grid grid-cols-2 gap-4">
-                    {(selectedDetailedEq.documents || []).length > 0 ? (
-                      selectedDetailedEq.documents?.map(doc => (
-                        <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer" className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center hover:bg-slate-100 transition-colors">
-                           <svg className="w-6 h-6 text-slate-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.707 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                           <span className="text-[10px] font-black uppercase text-slate-900 leading-tight">{doc.name}</span>
-                        </a>
-                      ))
-                    ) : (
-                      <div className="col-span-2 text-center py-4 text-slate-300 text-[10px] font-black uppercase">Aucun document disponible</div>
-                    )}
-                 </div>
-               </section>
-               <section>
-                 <h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Tutoriel Opérationnel</h4>
-                 {selectedDetailedEq.videoUrl ? (
-                   <div className="aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-200">
-                     <iframe 
-                      src={`https://www.youtube.com/embed/${selectedDetailedEq.videoUrl.split('v=')[1]?.split('&')[0] || selectedDetailedEq.videoUrl.split('/').pop()}`} 
-                      className="w-full h-full" 
-                      allowFullScreen 
-                     />
-                   </div>
-                 ) : (
-                   <div className="py-12 text-center bg-white border-2 border-dashed border-slate-300 rounded-3xl text-[10px] font-black text-slate-300 uppercase tracking-widest">Aucune vidéo disponible</div>
-                 )}
-               </section>
-            </div>
-            <div className="p-5 border-t bg-white sticky bottom-0"><button onClick={() => setDetailedEqId(null)} className="w-full bg-slate-900 text-white py-5 rounded-3xl text-[11px] font-black uppercase tracking-widest shadow-2xl active:scale-95 transition-all">Fermer</button></div>
-          </div>
-        )}
 
         <input type="file" ref={equipmentFileInputRef} className="hidden" accept="image/*" onChange={handleEquipmentFileChange} />
       </div>
