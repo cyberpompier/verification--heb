@@ -295,7 +295,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
     onUpdateEquipment(vehicle.id, itemId, {
         anomaly: finalDescription,
-        anomalyTags: reportTags
+        anomalyTags: reportTags,
+        reportedBy: currentUser,
+        lastChecked: today
     });
     
     // Create automatic history log

@@ -517,9 +517,17 @@ const App: React.FC = () => {
                           <span className="text-[8px] font-black text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded border border-orange-100">⚠️ {equipment.anomalyTags?.join(', ') || 'Signalement'}</span>
                           <span className="text-[8px] font-black text-slate-400 uppercase truncate">Empl : {equipment.location}</span>
                         </div>
-                        <p className="mt-2 text-[11px] font-medium text-slate-600 line-clamp-2 leading-tight">
+                        <p className="mt-2 text-[11px] font-medium text-slate-600 line-clamp-2 leading-tight mb-3">
                           {equipment.anomaly || 'Aucune description détaillée.'}
                         </p>
+                        <div className="flex items-center justify-between border-t border-orange-100 pt-2 mt-auto">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center">
+                                📅 {new Date(equipment.lastChecked).toLocaleDateString('fr-FR')}
+                            </span>
+                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
+                                👤 {equipment.reportedBy || 'Inconnu'}
+                            </span>
+                        </div>
                       </div>
                     </div>
                   </button>
