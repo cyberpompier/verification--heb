@@ -706,37 +706,48 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                         </div>
                       </div>
 
-                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                        <div className="flex flex-wrap gap-2">
-                           
-                           {/* SIGNALER Button */}
-                           {canModify && (
-                               <button 
-                                 onClick={() => handleOpenReport(item)}
-                                 className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${isReporting ? 'bg-orange-600 text-white border-orange-600' : hasAnomaly ? 'bg-red-600 text-white border-red-600 shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                               >
-                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                 <span>SIGNALER</span>
-                               </button>
-                           )}
+                      <div className="mt-5 pt-4 border-t border-slate-100">
+                        {/* Row 1: Primary Actions (Signaler, Edit, Verify) */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                {/* SIGNALER */}
+                                {canModify && (
+                                    <button 
+                                      onClick={() => handleOpenReport(item)}
+                                      className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${isReporting ? 'bg-orange-600 text-white border-orange-600' : hasAnomaly ? 'bg-red-600 text-white border-red-600 shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                      <span>SIGNALER</span>
+                                    </button>
+                                )}
 
-                           {/* DOCS Button */}
-                           {(item.videoUrl || item.manualUrl || (item.documents && item.documents.length > 0) || item.notes) && (
-                              <button 
-                                onClick={() => { setExpandedDocId(showDocs ? null : item.id); setReportingEqId(null); }}
-                                className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${showDocs ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                <span>DOCS</span>
+                                {/* EDIT */}
+                                {canModify && (
+                                  <button onClick={() => startEditing(item)} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 active:scale-90 transition-all shadow-sm">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                  </button>
+                                )}
+                            </div>
+
+                            {/* VERIFY */}
+                            {canModify && (
+                              <button onClick={() => handleVerifyItem(item.id)} className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}>
+                                {isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
                               </button>
-                           )}
-
-                          {canModify && (
-                            <button onClick={() => startEditing(item)} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 active:scale-90 transition-all shadow-sm"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg></button>
-                          )}
+                            )}
                         </div>
-                        {canModify && (
-                          <button onClick={() => handleVerifyItem(item.id)} className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}>{isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}</button>
+
+                        {/* Row 2: DOCS Button */}
+                        {(item.videoUrl || item.manualUrl || (item.documents && item.documents.length > 0) || item.notes) && (
+                            <div className="mt-2">
+                                <button 
+                                  onClick={() => { setExpandedDocId(showDocs ? null : item.id); setReportingEqId(null); }}
+                                  className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${showDocs ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                  <span>DOCS</span>
+                                </button>
+                            </div>
                         )}
                       </div>
 
