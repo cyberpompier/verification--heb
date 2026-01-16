@@ -1,6 +1,6 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument, UserRole } from '../types';
+import { supabase, TABLES, uploadImage } from '../lib/supabase.ts';
 
 interface VehicleDetailsProps {
   vehicle: Vehicle;
@@ -47,6 +47,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [editingEqIdForImage, setEditingEqIdForImage] = useState<string | null>(null);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
   
+  // Upload State
+  const [isUploadingEqImage, setIsUploadingEqImage] = useState(false);
+
   // History Filter State
   const [historyFilter, setHistoryFilter] = useState<'all' | 'anomalie' | 'verification' | 'divers'>('all');
 
@@ -189,10 +192,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     }
   };
 
-  const startEditing = (item: Equipment) => {
+  const startEditing = async (item: Equipment) => {
     if (!canModify) return;
-    setEditingEqId(item.id);
+    
+    // Data is now full on load, no need to fetch
     setEditEqForm(item);
+    setEditingEqId(item.id);
     setIsAdding(false);
   };
 
@@ -246,25 +251,35 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
      }
   };
 
-  const handleEquipmentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEquipmentFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        if (editingEqIdForImage) {
-            // Updating from list view
-            onUpdateEquipment(vehicle.id, editingEqIdForImage, { thumbnailUrl: base64 });
-            setEditingEqIdForImage(null);
-        } else if (editingEqId) {
-            // Updating inside edit form
-            setEditEqForm(prev => ({ ...prev, thumbnailUrl: base64 }));
+    if (!file) return;
+
+    setIsUploadingEqImage(true);
+    
+    try {
+        // Upload to bucket "equipment" inside "firetrack-assets"
+        const publicUrl = await uploadImage(file, 'equipment');
+        
+        if (publicUrl) {
+             if (editingEqIdForImage) {
+                // Updating from list view
+                onUpdateEquipment(vehicle.id, editingEqIdForImage, { thumbnailUrl: publicUrl });
+                setEditingEqIdForImage(null);
+            } else if (editingEqId) {
+                // Updating inside edit form
+                setEditEqForm(prev => ({ ...prev, thumbnailUrl: publicUrl }));
+            } else {
+                // Updating inside add form
+                setNewEq(prev => ({ ...prev, thumbnailUrl: publicUrl }));
+            }
         } else {
-            // Updating inside add form
-            setNewEq(prev => ({ ...prev, thumbnailUrl: base64 }));
+            alert('Échec de l\'envoi de l\'image');
         }
-      };
-      reader.readAsDataURL(file);
+    } catch (err) {
+        console.error('Upload Error', err);
+    } finally {
+        setIsUploadingEqImage(false);
     }
   };
 
@@ -474,15 +489,22 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                       <button 
                         type="button"
                         onClick={() => {
-                          setEditingEqIdForImage(null); // Ensure we are targeting form state
-                          equipmentFileInputRef.current?.click();
+                          if (!isUploadingEqImage) {
+                            setEditingEqIdForImage(null); // Ensure we are targeting form state
+                            equipmentFileInputRef.current?.click();
+                          }
                         }}
                         className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:border-red-500 hover:text-red-500 transition-colors flex-shrink-0 overflow-hidden relative"
                       >
                          {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? (
-                            <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className="w-full h-full object-cover" />
+                            <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className={`w-full h-full object-cover ${isUploadingEqImage ? 'opacity-50' : ''}`} />
                          ) : (
                             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5" /></svg>
+                         )}
+                         {isUploadingEqImage && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                            </div>
                          )}
                       </button>
                       
@@ -613,8 +635,8 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                             <button type="button" onClick={handleDeleteSubmit} className="text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-50 px-3 py-2 rounded-xl transition-colors">Supprimer</button>
                         )}
                       </div>
-                      <button type="submit" className="bg-red-600 text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-red-600/20">
-                         {editingEqId ? 'ENREGISTRER' : 'ENREGISTRER'}
+                      <button type="submit" disabled={isUploadingEqImage} className="bg-red-600 text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed">
+                         {isUploadingEqImage ? 'ENVOI...' : 'ENREGISTRER'}
                       </button>
                   </div>
                 </form>

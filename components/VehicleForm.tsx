@@ -1,6 +1,6 @@
-
-import React, { useState } from 'react';
-import { Vehicle, VehicleType, VehicleStatus } from '../types';
+import React, { useState, useRef } from 'react';
+import { Vehicle, VehicleStatus } from '../types';
+import { uploadImage } from '../lib/supabase.ts';
 
 interface VehicleFormProps {
   onSave: (vehicle: Omit<Vehicle, 'id' | 'equipment' | 'history'>) => void;
@@ -19,9 +19,27 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
     status: VehicleStatus.AVAILABLE
   });
 
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const publicUrl = await uploadImage(file, 'vehicles');
+    
+    if (publicUrl) {
+      setFormData({ ...formData, imageUrl: publicUrl });
+    } else {
+      alert("Erreur lors de l'envoi de l'image. Veuillez réessayer.");
+    }
+    setIsUploading(false);
   };
 
   const inputClasses = "w-full text-sm p-4 rounded-2xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 text-slate-900 transition-all";
@@ -115,16 +133,34 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
             </div>
 
             <div>
-              <label className={labelClasses}>URL de l'image (Unsplash ou autre)</label>
-              <input 
-                type="text" 
-                placeholder="https://..." 
-                className={inputClasses}
-                value={formData.imageUrl}
-                onChange={e => setFormData({...formData, imageUrl: e.target.value})}
-              />
-              <div className="mt-4 rounded-3xl overflow-hidden h-32 border-2 border-slate-100 bg-slate-50">
-                <img src={formData.imageUrl} alt="Aperçu" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://images.unsplash.com/photo-1582560475093-ba66accbc424?w=600')} />
+              <label className={labelClasses}>Photo du Véhicule</label>
+              <div 
+                className="mt-2 rounded-3xl overflow-hidden h-40 border-2 border-dashed border-slate-200 bg-slate-50 relative group cursor-pointer hover:border-red-500 transition-colors"
+                onClick={() => !isUploading && fileInputRef.current?.click()}
+              >
+                <img 
+                  src={formData.imageUrl} 
+                  alt="Aperçu" 
+                  className={`w-full h-full object-cover transition-opacity ${isUploading ? 'opacity-50' : ''}`}
+                />
+                
+                {isUploading && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
+                  </div>
+                )}
+                
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                   <span className="text-white font-bold text-xs uppercase tracking-widest">Changer la photo</span>
+                </div>
+                
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="image/*"
+                  onChange={handleImageChange}
+                />
               </div>
             </div>
           </div>
@@ -134,9 +170,10 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
           <button 
             type="submit" 
             onClick={handleSubmit}
-            className="w-full bg-red-600 text-white py-5 rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all"
+            disabled={isUploading}
+            className="w-full bg-red-600 text-white py-5 rounded-3xl text-sm font-black uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Intégrer l'engin au parc
+            {isUploading ? 'Envoi en cours...' : 'Intégrer l\'engin au parc'}
           </button>
         </div>
       </div>

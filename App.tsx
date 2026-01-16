@@ -192,7 +192,7 @@ const App: React.FC = () => {
 
   const fetchVehicles = async () => {
     try {
-      // 1. Fetch Vehicles separately to avoid Timeout (Code 57014) on Join
+      // 1. Fetch Vehicles (Lightweight)
       const { data: vehiclesData, error: vehiclesError } = await supabase
         .from(TABLES.VEHICLES)
         .select('*')
@@ -200,10 +200,11 @@ const App: React.FC = () => {
 
       if (vehiclesError) throw vehiclesError;
 
-      // 2. Fetch All Equipment separately
+      // 2. Fetch Equipment (LIGHTWEIGHT ONLY) to avoid timeout 57014 due to legacy Base64 data
+      // We exclude: thumbnail_url, manual_url, video_url, documents
       const { data: equipmentData, error: equipmentError } = await supabase
         .from(TABLES.EQUIPMENT)
-        .select('*');
+        .select('id, name, category, location, quantity, last_checked, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id');
 
       if (equipmentError) throw equipmentError;
 
@@ -219,19 +220,17 @@ const App: React.FC = () => {
       const mappedVehicles = (vehiclesData || []).map((v: any) => {
         const vehicle = mapVehicleFromDB(v);
         vehicle.equipment = equipmentByVehicle[v.id] || [];
-        // History is loaded on demand only
-        vehicle.history = []; 
+        vehicle.history = []; // History is loaded on demand
         return vehicle;
       });
 
       setVehicles(mappedVehicles);
       
-      // If a vehicle is selected, refresh its history
+      // If a vehicle is selected, refresh its details with FULL data (including images)
       if (selectedVehicle) {
         const updated = mappedVehicles.find(v => v.id === selectedVehicle.id);
         if (updated) {
-            const history = await fetchVehicleHistory(updated.id);
-            setSelectedVehicle({ ...updated, history });
+            openVehicleDetails(updated, 'info', null);
         }
       }
     } catch (err) {
@@ -420,12 +419,28 @@ const App: React.FC = () => {
     setInitialDetailsTab(tab);
     setHighlightedEquipmentId(eqId);
     
-    // Le véhicule a déjà ses équipements chargés via fetchVehicles
+    // 1. Set selected vehicle with lightweight data (instant open)
     setSelectedVehicle(vehicle);
     
-    // On charge l'historique en différé
-    const history = await fetchVehicleHistory(vehicle.id);
-    setSelectedVehicle(prev => prev && prev.id === vehicle.id ? { ...prev, history } : prev);
+    try {
+      // 2. Fetch Full Data (History + FULL Equipment with images) for THIS vehicle only
+      // Fetching specific vehicle equipment is safe even with Base64 because it's limited rows
+      const [history, { data: fullEquipmentData }] = await Promise.all([
+          fetchVehicleHistory(vehicle.id),
+          supabase.from(TABLES.EQUIPMENT).select('*').eq('vehicle_id', vehicle.id)
+      ]);
+      
+      let equipment = vehicle.equipment;
+      if (fullEquipmentData) {
+          equipment = fullEquipmentData.map(mapEquipmentFromDB);
+      }
+      
+      // 3. Update state with full data (images appear)
+      setSelectedVehicle(prev => prev && prev.id === vehicle.id ? { ...prev, equipment, history } : prev);
+
+    } catch (err) {
+      console.error("Error loading full details", err);
+    }
   };
 
   const handleLogout = async () => {
@@ -591,7 +606,7 @@ const App: React.FC = () => {
           <div className="animate-fade-in space-y-6">
             <div className="bg-white p-8 rounded-[40px] border-2 border-slate-200 shadow-xl text-center">
               <div className="w-24 h-24 bg-red-100 rounded-[32px] flex items-center justify-center mx-auto mb-6">
-                <svg className="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" /></svg>
+                <svg className="w-12 h-12 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" /></svg>
               </div>
               <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Gestion du Parc</h2>
               <p className="text-sm text-slate-500 font-medium mb-8">Administrez les véhicules de secours et les accès personnels.</p>
@@ -664,7 +679,7 @@ const App: React.FC = () => {
               onClick={() => setActiveView('admin')}
               className={`flex-1 flex flex-col items-center py-3 transition-colors ${activeView === 'admin' ? 'text-red-500' : 'text-white/40'}`}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" /></svg>
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" strokeWidth="2" /></svg>
               <span className="text-[8px] font-black uppercase mt-1">Admin</span>
             </button>
           )}

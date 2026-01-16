@@ -12,3 +12,40 @@ export const TABLES = {
   EQUIPMENT: 'firetrack_equipment',
   HISTORY: 'firetrack_history'
 };
+
+export const BUCKET_NAME = 'firetrack-assets';
+
+/**
+ * Uploads a file to Supabase Storage and returns the public URL.
+ * @param file The file object to upload
+ * @param folder The folder path (e.g., 'vehicles' or 'equipment')
+ * @returns The public URL of the uploaded file or null if error
+ */
+export const uploadImage = async (file: File, folder: string): Promise<string | null> => {
+  try {
+    // Sanitize filename and make it unique
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('Error uploading image:', uploadError);
+      return null;
+    }
+
+    const { data } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(fileName);
+
+    return data.publicUrl;
+  } catch (err) {
+    console.error('Unexpected error during upload:', err);
+    return null;
+  }
+};

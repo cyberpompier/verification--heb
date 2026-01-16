@@ -1,10 +1,11 @@
-const CACHE_NAME = 'firetrack-v6';
+
+const CACHE_NAME = 'firetrack-v7';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://cdn.tailwindcss.com',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
 ];
@@ -47,7 +48,7 @@ self.addEventListener('fetch', (event) => {
       }).catch(() => {
         // Fallback pour la navigation principale
         if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
+          return caches.match('./index.html');
         }
       });
     })
