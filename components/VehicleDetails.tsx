@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry, EquipmentDocument, UserRole } from '../types';
 import { supabase, TABLES, uploadImage } from '../lib/supabase.ts';
@@ -65,7 +66,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const isAdmin = userRole === UserRole.ADMIN;
   const isReader = userRole === UserRole.READER;
-  const canModify = userRole === UserRole.ADMIN || userRole === UserRole.OPERATOR;
+  
+  // Permissions opérationnelles (Vérifier, Signaler, Ajouter Note)
+  const canOperate = userRole === UserRole.ADMIN || userRole === UserRole.OPERATOR;
 
   const today = new Date().toISOString().split('T')[0];
   const equipmentFileInputRef = useRef<HTMLInputElement>(null);
@@ -165,7 +168,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canModify || !editingEqId) return;
+    if (!isAdmin || !editingEqId) return;
     onUpdateEquipment(vehicle.id, editingEqId, editEqForm);
     setEditingEqId(null);
     setDocName('');
@@ -193,7 +196,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   };
 
   const startEditing = async (item: Equipment) => {
-    if (!canModify) return;
+    if (!isAdmin) return;
     
     // Data is now full on load, no need to fetch
     setEditEqForm(item);
@@ -711,7 +714,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 {/* SIGNALER */}
-                                {canModify && (
+                                {canOperate && (
                                     <button 
                                       onClick={() => handleOpenReport(item)}
                                       className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${isReporting ? 'bg-orange-600 text-white border-orange-600' : hasAnomaly ? 'bg-red-600 text-white border-red-600 shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
@@ -721,8 +724,8 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                                     </button>
                                 )}
 
-                                {/* EDIT */}
-                                {canModify && (
+                                {/* EDIT - RESTRICTED TO ADMIN */}
+                                {isAdmin && (
                                   <button onClick={() => startEditing(item)} className="p-2.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 active:scale-90 transition-all shadow-sm">
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                                   </button>
@@ -730,7 +733,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                             </div>
 
                             {/* VERIFY */}
-                            {canModify && (
+                            {canOperate && (
                               <button onClick={() => handleVerifyItem(item.id)} className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}>
                                 {isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
                               </button>
@@ -893,10 +896,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                     ))}
                  </div>
 
-                 {canModify && <button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[10px] font-black text-red-600 uppercase bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 active:scale-95 transition-all whitespace-nowrap self-start sm:self-auto">Ajouter Note</button>}
+                 {canOperate && <button onClick={() => setIsAddingLog(!isAddingLog)} className="text-[10px] font-black text-red-600 uppercase bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 active:scale-95 transition-all whitespace-nowrap self-start sm:self-auto">Ajouter Note</button>}
                </div>
                
-               {isAddingLog && canModify && (
+               {isAddingLog && canOperate && (
                   <form onSubmit={(e) => { e.preventDefault(); onAddHistoryEntry(vehicle.id, newLog); setIsAddingLog(false); setNewLog({...newLog, description: ''}); }} className="bg-white p-5 rounded-2xl border-2 border-slate-200 space-y-4 mb-8 animate-slide-up shadow-lg">
                     <textarea placeholder="Observation technique ou opérationnelle..." required className="w-full text-sm p-3 rounded-xl border border-slate-100 h-24 outline-none font-bold text-slate-900" value={newLog.description} onChange={e => setNewLog({...newLog, description: e.target.value})} />
                     <button type="submit" className="w-full bg-slate-900 text-white py-4 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md active:scale-95">Publier</button>
