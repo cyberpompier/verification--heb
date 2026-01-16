@@ -51,7 +51,8 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
+                // Use relative path and explicit scope to avoid origin mismatch errors
+                navigator.serviceWorker.register('./service-worker.js', { scope: './' })
                     .then(reg => console.log('FireTrack Pro SW registered!'))
                     .catch(err => console.error('SW registration failed:', err));
             });

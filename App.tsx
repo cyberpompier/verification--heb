@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Vehicle, VehicleStatus, Equipment, HistoryEntry, UserProfile, UserRole } from './types.ts';
 import Dashboard from './components/Dashboard.tsx';
@@ -136,6 +135,9 @@ const App: React.FC = () => {
   }, []);
 
   const fetchProfile = async (userId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const userEmail = user?.email || '';
+
     const { data, error } = await supabase
       .from(TABLES.PROFILES)
       .select('*')
@@ -146,6 +148,8 @@ const App: React.FC = () => {
       console.error('Erreur profil:', error);
     } else if (data) {
       const profile = mapProfileFromDB(data);
+      if (userEmail) profile.email = userEmail;
+      
       setUserProfile(profile);
       if (profile.lastName === 'Pompier' && profile.firstName === 'Utilisateur') {
         setIsEditingProfile(true);
@@ -158,7 +162,7 @@ const App: React.FC = () => {
         lastName: 'Pompier',
         grade: 'Sapeur',
         assignment: 'Non affecté',
-        email: session?.user?.email || '',
+        email: userEmail,
         avatarUrl: 'https://images.unsplash.com/photo-1600486913747-55e5470d6f40?w=200',
         role: UserRole.OPERATOR
       };
@@ -170,25 +174,65 @@ const App: React.FC = () => {
     fetchVehicles();
   };
 
+  const fetchVehicleHistory = async (vehicleId: string): Promise<HistoryEntry[]> => {
+    const { data, error } = await supabase
+      .from(TABLES.HISTORY)
+      .select('*')
+      .eq('vehicle_id', vehicleId)
+      .order('date', { ascending: false })
+      .order('timestamp', { ascending: false })
+      .limit(100); 
+      
+    if (error) {
+        console.error("Error fetching history", error);
+        return [];
+    }
+    return (data || []).map(mapHistoryFromDB);
+  };
+
   const fetchVehicles = async () => {
     try {
-      const { data, error } = await supabase
+      // 1. Fetch Vehicles separately to avoid Timeout (Code 57014) on Join
+      const { data: vehiclesData, error: vehiclesError } = await supabase
         .from(TABLES.VEHICLES)
-        .select(`
-          *,
-          equipment: ${TABLES.EQUIPMENT} (*),
-          history: ${TABLES.HISTORY} (*)
-        `)
+        .select('*')
         .order('call_sign', { ascending: true });
 
-      if (error) throw error;
-      const mappedVehicles = (data || []).map(mapVehicleFromDB);
+      if (vehiclesError) throw vehiclesError;
+
+      // 2. Fetch All Equipment separately
+      const { data: equipmentData, error: equipmentError } = await supabase
+        .from(TABLES.EQUIPMENT)
+        .select('*');
+
+      if (equipmentError) throw equipmentError;
+
+      // 3. Map Equipment to Vehicles in memory
+      const equipmentByVehicle: Record<string, Equipment[]> = {};
+      (equipmentData || []).forEach((item: any) => {
+        const eq = mapEquipmentFromDB(item);
+        const vId = item.vehicle_id;
+        if (!equipmentByVehicle[vId]) equipmentByVehicle[vId] = [];
+        equipmentByVehicle[vId].push(eq);
+      });
+
+      const mappedVehicles = (vehiclesData || []).map((v: any) => {
+        const vehicle = mapVehicleFromDB(v);
+        vehicle.equipment = equipmentByVehicle[v.id] || [];
+        // History is loaded on demand only
+        vehicle.history = []; 
+        return vehicle;
+      });
+
       setVehicles(mappedVehicles);
       
-      // Mettre à jour le véhicule sélectionné s'il est ouvert
+      // If a vehicle is selected, refresh its history
       if (selectedVehicle) {
         const updated = mappedVehicles.find(v => v.id === selectedVehicle.id);
-        if (updated) setSelectedVehicle(updated);
+        if (updated) {
+            const history = await fetchVehicleHistory(updated.id);
+            setSelectedVehicle({ ...updated, history });
+        }
       }
     } catch (err) {
       console.error('Erreur chargement engins:', err);
@@ -372,10 +416,16 @@ const App: React.FC = () => {
     }
   };
 
-  const openVehicleDetails = (vehicle: Vehicle, tab: 'info' | 'inventory' | 'history' = 'info', eqId: string | null = null) => {
+  const openVehicleDetails = async (vehicle: Vehicle, tab: 'info' | 'inventory' | 'history' = 'info', eqId: string | null = null) => {
     setInitialDetailsTab(tab);
     setHighlightedEquipmentId(eqId);
+    
+    // Le véhicule a déjà ses équipements chargés via fetchVehicles
     setSelectedVehicle(vehicle);
+    
+    // On charge l'historique en différé
+    const history = await fetchVehicleHistory(vehicle.id);
+    setSelectedVehicle(prev => prev && prev.id === vehicle.id ? { ...prev, history } : prev);
   };
 
   const handleLogout = async () => {
