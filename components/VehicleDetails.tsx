@@ -363,11 +363,41 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     setReportTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
 
-  const getYoutubeId = (url: string) => {
+  // Improved helper to generate YouTube Embed URL with START time
+  const getYoutubeEmbedUrl = (url: string) => {
     if (!url) return null;
+    
+    // 1. Extract ID
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
+    const id = (match && match[2].length === 11) ? match[2] : null;
+    
+    if (!id) return null;
+
+    // 2. Extract Timestamp from URL (t=XmYs or t=120)
+    let startSeconds = 0;
+    const timeMatch = url.match(/[?&]t=([^&]+)/);
+    
+    if (timeMatch && timeMatch[1]) {
+        const timeStr = timeMatch[1];
+        
+        // Check if it has units (h, m, s)
+        const hasUnits = /[hms]/.test(timeStr);
+        
+        if (hasUnits) {
+            const h = parseInt(timeStr.match(/(\d+)h/)?.[1] || '0');
+            const m = parseInt(timeStr.match(/(\d+)m/)?.[1] || '0');
+            const s = parseInt(timeStr.match(/(\d+)s/)?.[1] || '0');
+            startSeconds = (h * 3600) + (m * 60) + s;
+        } else {
+            // Raw seconds (e.g., t=120)
+            startSeconds = parseInt(timeStr) || 0;
+        }
+    }
+
+    // 3. Construct Embed URL with 'start' parameter
+    const queryParams = startSeconds > 0 ? `?start=${startSeconds}` : '';
+    return `https://www.youtube.com/embed/${id}${queryParams}`;
   };
 
   const inputClasses = "w-full text-xs p-3 rounded-xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-red-500 text-slate-900 transition-all placeholder:text-slate-400/80";
@@ -783,12 +813,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                              </div>
                            )}
 
-                           {/* Video Embed */}
-                           {item.videoUrl && getYoutubeId(item.videoUrl) && (
+                           {/* Video Embed with support for timestamps */}
+                           {item.videoUrl && getYoutubeEmbedUrl(item.videoUrl) && (
                               <div className="mb-4 rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video relative group">
                                 <iframe 
                                   className="absolute inset-0 w-full h-full"
-                                  src={`https://www.youtube.com/embed/${getYoutubeId(item.videoUrl)}`} 
+                                  src={getYoutubeEmbedUrl(item.videoUrl)!} 
                                   title="Video"
                                   frameBorder="0" 
                                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
