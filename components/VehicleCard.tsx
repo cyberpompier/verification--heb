@@ -12,6 +12,11 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
   const totalItems = vehicle.equipment.length;
   const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
   const isInventoryInProgress = verifiedItems > 0 && verifiedItems < totalItems;
+  
+  // Get the avatar of the person who started the inventory today
+  const activeUserAvatar = isInventoryInProgress 
+    ? vehicle.equipment.find(e => e.lastChecked === today && e.lastCheckedByAvatarUrl)?.lastCheckedByAvatarUrl 
+    : null;
 
   const getStatusColor = (status: VehicleStatus) => {
     switch (status) {
@@ -45,8 +50,20 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
           {vehicle.status}
         </div>
         {isInventoryInProgress && (
-          <div className="absolute top-4 left-4 px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl shadow-lg animate-pulse border border-orange-400">
-            Inventaire en cours
+          <div className="absolute top-4 left-4 flex items-center space-x-2">
+            <div className="px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl shadow-lg animate-pulse border border-orange-400">
+              Inventaire en cours
+            </div>
+            {activeUserAvatar && (
+              <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-lg bg-white">
+                <img 
+                  src={activeUserAvatar} 
+                  alt="Active User" 
+                  className="w-full h-full object-cover" 
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

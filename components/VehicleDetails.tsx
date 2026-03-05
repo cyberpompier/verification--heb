@@ -14,6 +14,7 @@ interface VehicleDetailsProps {
   onRemoveEquipment: (vehicleId: string, equipmentId: string) => void;
   onUpdateEquipment: (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => void;
   onAddHistoryEntry: (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => void;
+  currentUserAvatarUrl?: string;
   initialTab?: 'info' | 'inventory' | 'history';
   highlightEquipmentId?: string | null;
 }
@@ -37,7 +38,7 @@ const Highlight: React.FC<{ text: string; search: string }> = ({ text, search })
 const VehicleDetails: React.FC<VehicleDetailsProps> = ({ 
   vehicle, onClose, currentUser, userRole, onUpdateStatus, onUpdateVehicleImage,
   onAddEquipment, onRemoveEquipment, onUpdateEquipment, onAddHistoryEntry,
-  initialTab = 'info', highlightEquipmentId = null
+  currentUserAvatarUrl, initialTab = 'info', highlightEquipmentId = null
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'inventory' | 'history'>(initialTab);
   const [isAdding, setIsAdding] = useState(false);
@@ -89,6 +90,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const totalItems = vehicle.equipment.length;
   const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
   const progressPercentage = totalItems === 0 ? 0 : Math.round((verifiedItems / totalItems) * 100);
+
+  const activeUserAvatar = verifiedItems > 0 && verifiedItems < totalItems
+    ? vehicle.equipment.find(e => e.lastChecked === today && e.lastCheckedByAvatarUrl)?.lastCheckedByAvatarUrl
+    : null;
 
   const uniqueLocations = useMemo(() => {
     const locs = new Set(vehicle.equipment.map(e => e.location));
@@ -212,7 +217,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     const isAlreadyChecked = item.lastChecked === today;
     
     // Update the item
-    onUpdateEquipment(vehicle.id, itemId, { lastChecked: today });
+    onUpdateEquipment(vehicle.id, itemId, { 
+      lastChecked: today,
+      lastCheckedByAvatarUrl: currentUserAvatarUrl 
+    });
 
     // Automatic Log if this verification completes the 100%
     if (!isAlreadyChecked) {
@@ -421,8 +429,20 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
             <p className="opacity-70 text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] mt-1">{vehicle.type}</p>
           </div>
           {verifiedItems > 0 && verifiedItems < totalItems && (
-            <div className="absolute top-3 left-3 px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse border border-orange-400">
-              Inventaire en cours
+            <div className="absolute top-3 left-3 flex items-center space-x-2">
+              <div className="px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse border border-orange-400">
+                Inventaire en cours
+              </div>
+              {activeUserAvatar && (
+                <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-lg bg-white">
+                  <img 
+                    src={activeUserAvatar} 
+                    alt="Active User" 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              )}
             </div>
           )}
           <button onClick={onClose} className="absolute top-3 right-3 p-2 bg-black/40 backdrop-blur-xl rounded-full text-white active:scale-90 transition-all border border-white/20">

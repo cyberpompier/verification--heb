@@ -45,6 +45,7 @@ export interface Equipment {
   location: string;
   quantity: number;
   lastChecked: string;
+  lastCheckedByAvatarUrl?: string;
   condition: 'Bon' | 'Moyen' | 'Mauvais' | 'À remplacer';
   notes?: string;
   anomaly?: string;
@@ -64,6 +65,7 @@ export interface HistoryEntry {
   status?: 'success' | 'danger' | 'warning' | 'info';
   description: string;
   performedBy: string;
+  performedByAvatarUrl?: string;
   equipmentId?: string;
 }
 

@@ -42,6 +42,7 @@ const mapEquipmentFromDB = (data: any): Equipment => ({
   location: data.location,
   quantity: data.quantity,
   lastChecked: data.last_checked,
+  lastCheckedByAvatarUrl: data.last_checked_by_avatar_url,
   condition: data.condition,
   notes: data.notes,
   anomaly: data.anomaly,
@@ -60,6 +61,7 @@ const mapEquipmentToDB = (eq: Partial<Equipment>, vehicleId?: string) => ({
   location: eq.location,
   quantity: eq.quantity,
   last_checked: eq.lastChecked,
+  last_checked_by_avatar_url: eq.lastCheckedByAvatarUrl,
   condition: eq.condition,
   notes: eq.notes,
   anomaly: eq.anomaly,
@@ -79,6 +81,7 @@ const mapHistoryFromDB = (data: any): HistoryEntry => ({
   status: data.status,
   description: data.description,
   performedBy: data.performed_by,
+  performedByAvatarUrl: data.performed_by_avatar_url,
   equipmentId: data.equipment_id
 });
 
@@ -204,7 +207,7 @@ const App: React.FC = () => {
       // We exclude: thumbnail_url, manual_url, video_url, documents
       const { data: equipmentData, error: equipmentError } = await supabase
         .from(TABLES.EQUIPMENT)
-        .select('id, name, category, location, quantity, last_checked, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id');
+        .select('id, name, category, location, quantity, last_checked, last_checked_by_avatar_url, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id');
 
       if (equipmentError) throw equipmentError;
 
@@ -331,6 +334,7 @@ const App: React.FC = () => {
         status: entry.status || 'info',
         description: entry.description,
         performed_by: meta.performed_by,
+        performed_by_avatar_url: meta.performed_by_avatar_url,
         equipment_id: entry.equipmentId
       };
       const { error } = await supabase.from(TABLES.HISTORY).insert([dbEntry]);
@@ -376,7 +380,8 @@ const App: React.FC = () => {
     return {
       date: now.toISOString().split('T')[0],
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      performed_by: currentUserDisplayName
+      performed_by: currentUserDisplayName,
+      performed_by_avatar_url: userProfile?.avatarUrl
     };
   };
 
@@ -395,7 +400,8 @@ const App: React.FC = () => {
       type: 'status',
       status: entryStatus,
       description: `État mis à jour vers : ${newStatus}.`,
-      performed_by: meta.performed_by
+      performed_by: meta.performed_by,
+      performed_by_avatar_url: meta.performed_by_avatar_url
     };
 
     await supabase.from(TABLES.VEHICLES).update({ status: newStatus }).eq('id', id);
@@ -635,6 +641,7 @@ const App: React.FC = () => {
           onRemoveEquipment={handleRemoveEquipment}
           onUpdateEquipment={handleUpdateEquipment} 
           onAddHistoryEntry={handleAddHistoryEntry} 
+          currentUserAvatarUrl={userProfile?.avatarUrl}
           initialTab={initialDetailsTab}
           highlightEquipmentId={highlightedEquipmentId}
         />
