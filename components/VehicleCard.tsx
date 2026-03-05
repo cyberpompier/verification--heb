@@ -9,13 +9,14 @@ interface VehicleCardProps {
 
 const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
   const today = new Date().toISOString().split('T')[0];
-  const totalItems = vehicle.equipment.length;
-  const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
+  const verifiableEquipment = vehicle.equipment.filter(e => e.quantity > 0);
+  const totalItems = verifiableEquipment.length;
+  const verifiedItems = verifiableEquipment.filter(e => e.lastChecked === today).length;
   const isInventoryInProgress = verifiedItems > 0 && verifiedItems < totalItems;
   
   // Get the avatar of the person who started the inventory today
   const activeUserAvatar = isInventoryInProgress 
-    ? vehicle.equipment.find(e => e.lastChecked === today && e.lastCheckedByAvatarUrl)?.lastCheckedByAvatarUrl 
+    ? verifiableEquipment.find(e => e.lastChecked === today && e.lastCheckedByAvatarUrl)?.lastCheckedByAvatarUrl 
     : null;
 
   const getStatusColor = (status: VehicleStatus) => {

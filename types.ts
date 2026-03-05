@@ -65,7 +65,6 @@ export interface HistoryEntry {
   status?: 'success' | 'danger' | 'warning' | 'info';
   description: string;
   performedBy: string;
-  performedByAvatarUrl?: string;
   equipmentId?: string;
 }
 

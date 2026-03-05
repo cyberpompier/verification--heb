@@ -87,12 +87,13 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
 
-  const totalItems = vehicle.equipment.length;
-  const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
+  const verifiableEquipment = vehicle.equipment.filter(e => e.quantity > 0);
+  const totalItems = verifiableEquipment.length;
+  const verifiedItems = verifiableEquipment.filter(e => e.lastChecked === today).length;
   const progressPercentage = totalItems === 0 ? 0 : Math.round((verifiedItems / totalItems) * 100);
 
   const activeUserAvatar = verifiedItems > 0 && verifiedItems < totalItems
-    ? vehicle.equipment.find(e => e.lastChecked === today && e.lastCheckedByAvatarUrl)?.lastCheckedByAvatarUrl
+    ? verifiableEquipment.find(e => e.lastChecked === today && e.lastCheckedByAvatarUrl)?.lastCheckedByAvatarUrl
     : null;
 
   const uniqueLocations = useMemo(() => {
@@ -212,7 +213,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const handleVerifyItem = (itemId: string) => {
     const item = vehicle.equipment.find(e => e.id === itemId);
-    if (!item) return;
+    if (!item || item.quantity === 0) return;
 
     const isAlreadyChecked = item.lastChecked === today;
     
@@ -298,6 +299,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   // Reporting Handlers
   const handleOpenReport = (item: Equipment) => {
+    if (item.quantity === 0) return;
     if (reportingEqId === item.id) {
         setReportingEqId(null);
     } else {
@@ -357,7 +359,11 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       
       onUpdateEquipment(vehicle.id, itemId, {
           anomaly: "",
-          anomalyTags: []
+          anomalyTags: [],
+          condition: 'Bon',
+          reportedBy: "",
+          lastChecked: today,
+          lastCheckedByAvatarUrl: currentUserAvatarUrl
       });
 
       if (originalItem) {
@@ -365,7 +371,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
             date: new Date().toISOString().split('T')[0],
             type: 'maintenance',
             status: 'success',
-            description: `RÉSOLUTION RAPIDE - ${originalItem.name} : Incident clôturé.`,
+            description: `RÉSOLUTION - ${originalItem.name} : Incident clôturé, matériel remis en état nominal.`,
             equipmentId: itemId
         });
       }
@@ -707,21 +713,25 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                   const hasAnomaly = !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
                   const showDocs = expandedDocId === item.id;
                   const isReporting = reportingEqId === item.id;
+                  const isOutOfStock = item.quantity === 0;
 
                   return (
-                    <div id={`eq-${item.id}`} key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
+                    <div id={`eq-${item.id}`} key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${isOutOfStock ? 'opacity-40 grayscale border-slate-100 bg-slate-50/50' : hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday && !isOutOfStock ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
                       <div className="flex items-start space-x-4">
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
                           {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start">
-                            <h5 className="font-black text-slate-900 text-[14px] uppercase tracking-tight truncate"><Highlight text={item.name} search={equipmentSearch} /></h5>
-                            <span className="text-[10px] font-black bg-slate-900 text-white px-3 py-1 rounded-xl">x{item.quantity}</span>
+                            <h5 className={`font-black text-slate-900 text-[14px] uppercase tracking-tight truncate ${isOutOfStock ? 'line-through decoration-slate-400 decoration-2' : ''}`}><Highlight text={item.name} search={equipmentSearch} /></h5>
+                            <span className={`text-[10px] font-black px-3 py-1 rounded-xl ${isOutOfStock ? 'bg-slate-200 text-slate-500' : 'bg-slate-900 text-white'}`}>x{item.quantity}</span>
                           </div>
                           <div className="flex items-center space-x-3 mt-2">
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.category}</span>
                             <span className="text-[8px] font-black text-red-600 uppercase bg-red-50 px-2 py-0.5 rounded border border-red-100">📍 {item.location}</span>
+                            {isOutOfStock && (
+                              <span className="text-[8px] font-black bg-slate-200 text-slate-600 px-2 py-0.5 rounded uppercase tracking-widest">HORS DOTATION</span>
+                            )}
                           </div>
                           {/* Badges Video/PDF/Docs - Condensed if expanded, otherwise detailed */}
                           {(!showDocs && !isReporting && (item.videoUrl || item.manualUrl || (item.documents && item.documents.length > 0))) && (
@@ -742,7 +752,8 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                                 {canOperate && (
                                     <button 
                                       onClick={() => handleOpenReport(item)}
-                                      className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${isReporting ? 'bg-orange-600 text-white border-orange-600' : hasAnomaly ? 'bg-red-600 text-white border-red-600 shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                                      disabled={isOutOfStock}
+                                      className={`p-2.5 rounded-xl border border-slate-200 font-black text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center space-x-1 ${isReporting ? 'bg-orange-600 text-white border-orange-600' : hasAnomaly ? 'bg-red-600 text-white border-red-600 shadow-red-200 animate-pulse' : 'bg-white text-slate-600 hover:bg-slate-50'} ${isOutOfStock ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     >
                                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                                       <span>SIGNALER</span>
@@ -759,8 +770,12 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
                             {/* VERIFY */}
                             {canOperate && (
-                              <button onClick={() => handleVerifyItem(item.id)} className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}>
-                                {isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
+                              <button 
+                                onClick={() => handleVerifyItem(item.id)} 
+                                disabled={isOutOfStock}
+                                className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday && !isOutOfStock ? 'bg-green-600 border-green-600 text-white' : isOutOfStock ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}
+                              >
+                                {isOutOfStock ? 'INDISPONIBLE' : isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
                               </button>
                             )}
                         </div>

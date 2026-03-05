@@ -81,7 +81,6 @@ const mapHistoryFromDB = (data: any): HistoryEntry => ({
   status: data.status,
   description: data.description,
   performedBy: data.performed_by,
-  performedByAvatarUrl: data.performed_by_avatar_url,
   equipmentId: data.equipment_id
 });
 
@@ -334,7 +333,6 @@ const App: React.FC = () => {
         status: entry.status || 'info',
         description: entry.description,
         performed_by: meta.performed_by,
-        performed_by_avatar_url: meta.performed_by_avatar_url,
         equipment_id: entry.equipmentId
       };
       const { error } = await supabase.from(TABLES.HISTORY).insert([dbEntry]);
@@ -380,8 +378,7 @@ const App: React.FC = () => {
     return {
       date: now.toISOString().split('T')[0],
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      performed_by: currentUserDisplayName,
-      performed_by_avatar_url: userProfile?.avatarUrl
+      performed_by: currentUserDisplayName
     };
   };
 
@@ -400,8 +397,7 @@ const App: React.FC = () => {
       type: 'status',
       status: entryStatus,
       description: `État mis à jour vers : ${newStatus}.`,
-      performed_by: meta.performed_by,
-      performed_by_avatar_url: meta.performed_by_avatar_url
+      performed_by: meta.performed_by
     };
 
     await supabase.from(TABLES.VEHICLES).update({ status: newStatus }).eq('id', id);
