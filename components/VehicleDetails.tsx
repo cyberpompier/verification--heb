@@ -47,6 +47,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [editingEqIdForImage, setEditingEqIdForImage] = useState<string | null>(null);
   const [expandedDocId, setExpandedDocId] = useState<string | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
   
   // Upload State
   const [isUploadingEqImage, setIsUploadingEqImage] = useState(false);
@@ -225,6 +226,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           description: 'VÉRIFICATION COMPLÈTE - Inventaire validé à 100%.',
           date: today
         });
+        setShowSummary(true);
       }
     }
   };
@@ -418,6 +420,11 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
             <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-none uppercase">{vehicle.callSign}</h2>
             <p className="opacity-70 text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] mt-1">{vehicle.type}</p>
           </div>
+          {verifiedItems > 0 && verifiedItems < totalItems && (
+            <div className="absolute top-3 left-3 px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse border border-orange-400">
+              Inventaire en cours
+            </div>
+          )}
           <button onClick={onClose} className="absolute top-3 right-3 p-2 bg-black/40 backdrop-blur-xl rounded-full text-white active:scale-90 transition-all border border-white/20">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
@@ -428,6 +435,20 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           <TabButton active={activeTab === 'info'} onClick={() => setActiveTab('info')} label="Général" />
           <TabButton active={activeTab === 'inventory'} onClick={() => setActiveTab('inventory')} label={`Inventaire (${vehicle.equipment.length})`} />
           <TabButton active={activeTab === 'history'} onClick={() => setActiveTab('history')} label="Journal" />
+        </div>
+
+        {/* Persistent Progress Bar */}
+        <div className="bg-white px-5 py-3 border-b border-slate-200 flex-shrink-0">
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Progression Inventaire</span>
+            <span className="text-xs font-black text-slate-900">{progressPercentage}%</span>
+          </div>
+          <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-700 ease-out" 
+              style={{ width: `${progressPercentage}%` }} 
+            />
+          </div>
         </div>
 
         {/* Main Content Area */}
@@ -460,22 +481,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
           {activeTab === 'inventory' && (
             <div className="space-y-5 animate-fade-in">
-              {/* Progress Bar */}
-              <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                <div className="flex justify-between items-end mb-2">
-                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Inspection de l'inventaire</span>
-                  <div className="flex items-baseline space-x-1">
-                    <span className="text-xl font-black text-slate-900">{progressPercentage}%</span>
-                  </div>
-                </div>
-                <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                   <div 
-                     className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full transition-all duration-700 ease-out" 
-                     style={{ width: `${progressPercentage}%` }} 
-                   />
-                </div>
-              </div>
-
               {/* Search and Action Bar */}
               <div className="space-y-3">
                 <div className="flex items-center space-x-2">
@@ -939,6 +944,72 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
         <input type="file" ref={equipmentFileInputRef} className="hidden" accept="image/*" onChange={handleEquipmentFileChange} />
       </div>
+
+      {/* Verification Summary Modal */}
+      {showSummary && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl animate-slide-up">
+            <div className="bg-red-600 p-6 text-white text-center">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-black uppercase tracking-tight">Vérification Terminée</h3>
+              <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest mt-1">Résumé des anomalies</p>
+            </div>
+            
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {vehicle.equipment.filter(e => !!e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0)).length > 0 ? (
+                <div className="space-y-3">
+                  {vehicle.equipment
+                    .filter(e => !!e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0))
+                    .map(item => (
+                      <div key={item.id} className="flex items-start space-x-3 p-3 bg-orange-50 rounded-2xl border border-orange-100">
+                        <div className="w-10 h-10 rounded-xl bg-white flex-shrink-0 flex items-center justify-center border border-orange-200 overflow-hidden">
+                           {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <span className="text-xs">⚠️</span>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-black text-slate-900 uppercase truncate">{item.name}</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {item.anomalyTags?.map(tag => (
+                              <span key={tag} className="text-[7px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded-md uppercase">{tag}</span>
+                            ))}
+                          </div>
+                          {item.anomaly && <p className="text-[10px] text-slate-600 mt-1 italic leading-tight line-clamp-2">{item.anomaly}</p>}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg className="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-bold text-slate-500">Aucune anomalie signalée sur cet engin.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-col gap-3">
+              <button 
+                onClick={onClose}
+                className="w-full bg-red-600 text-white py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-red-600/20 active:scale-95 transition-all"
+              >
+                Valider la vérification
+              </button>
+              <button 
+                onClick={() => setShowSummary(false)}
+                className="w-full bg-white text-slate-400 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-slate-200 active:scale-95 transition-all"
+              >
+                Retour à l'inventaire
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

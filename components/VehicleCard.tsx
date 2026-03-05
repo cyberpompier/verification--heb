@@ -8,6 +8,11 @@ interface VehicleCardProps {
 }
 
 const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
+  const today = new Date().toISOString().split('T')[0];
+  const totalItems = vehicle.equipment.length;
+  const verifiedItems = vehicle.equipment.filter(e => e.lastChecked === today).length;
+  const isInventoryInProgress = verifiedItems > 0 && verifiedItems < totalItems;
+
   const getStatusColor = (status: VehicleStatus) => {
     switch (status) {
       case VehicleStatus.AVAILABLE: return 'bg-green-600';
@@ -39,6 +44,11 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
         <div className={`absolute top-4 right-4 px-3 py-1.5 rounded-xl text-[10px] font-black text-white uppercase shadow-2xl border border-white/20 ${getStatusColor(vehicle.status)}`}>
           {vehicle.status}
         </div>
+        {isInventoryInProgress && (
+          <div className="absolute top-4 left-4 px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl shadow-lg animate-pulse border border-orange-400">
+            Inventaire en cours
+          </div>
+        )}
       </div>
 
       <div className="p-5 flex-1 flex flex-col justify-between">
