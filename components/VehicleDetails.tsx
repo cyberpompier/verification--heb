@@ -58,6 +58,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   // Reporting State
   const [reportingEqId, setReportingEqId] = useState<string | null>(null);
+  const [verifyingWithAnomalyId, setVerifyingWithAnomalyId] = useState<string | null>(null);
   const [reportDescription, setReportDescription] = useState("");
   const [reportTags, setReportTags] = useState<string[]>([]);
   const [reportQuantity, setReportQuantity] = useState<number>(1);
@@ -77,7 +78,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   const [newEq, setNewEq] = useState<Omit<Equipment, 'id'>>({
-    name: '', category: '', location: '', quantity: 1, condition: 'Bon',
+    name: '', category: '', location: '', requiredQuantity: 1, currentQuantity: 1, condition: 'Bon',
     lastChecked: today, notes: '', thumbnailUrl: '', videoUrl: '', manualUrl: '', documents: []
   });
 
@@ -87,7 +88,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     type: HistoryEntry['type']; description: string; date: string; equipmentId?: string;
   }>({ type: 'note', description: '', date: today, equipmentId: '' });
 
-  const verifiableEquipment = vehicle.equipment.filter(e => e.quantity > 0);
+  const verifiableEquipment = vehicle.equipment.filter(e => e.requiredQuantity > 0);
   const totalItems = verifiableEquipment.length;
   const verifiedItems = verifiableEquipment.filter(e => e.lastChecked === today).length;
   const progressPercentage = totalItems === 0 ? 0 : Math.round((verifiedItems / totalItems) * 100);
@@ -213,9 +214,21 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const handleVerifyItem = (itemId: string) => {
     const item = vehicle.equipment.find(e => e.id === itemId);
-    if (!item || item.quantity === 0) return;
+    if (!item || item.requiredQuantity === 0) return;
 
+    const isMissing = item.currentQuantity < item.requiredQuantity;
+    const hasAnomaly = isMissing || !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
     const isAlreadyChecked = item.lastChecked === today;
+
+    // If item has anomaly, not checked today, and we haven't asked for confirmation yet
+    if (hasAnomaly && !isAlreadyChecked && verifyingWithAnomalyId !== itemId) {
+      setVerifyingWithAnomalyId(itemId);
+      // Auto-reset after 3 seconds
+      setTimeout(() => setVerifyingWithAnomalyId(prev => prev === itemId ? null : prev), 3000);
+      return;
+    }
+
+    setVerifyingWithAnomalyId(null);
     
     // Update the item
     onUpdateEquipment(vehicle.id, itemId, { 
@@ -236,6 +249,15 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           date: today
         });
         setShowSummary(true);
+      } else {
+        // Log individuel
+        onAddHistoryEntry(vehicle.id, {
+          date: today,
+          type: 'status',
+          status: isMissing ? 'warning' : 'success',
+          description: `Vérification effectuée : ${item.name}. ${isMissing ? `ALERTE QUANTITÉ (${item.currentQuantity}/${item.requiredQuantity})` : 'État nominal.'}`,
+          equipmentId: item.id
+        });
       }
     }
   };
@@ -299,35 +321,45 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   // Reporting Handlers
   const handleOpenReport = (item: Equipment) => {
-    if (item.quantity === 0) return;
+    if (item.requiredQuantity === 0) return;
     if (reportingEqId === item.id) {
         setReportingEqId(null);
     } else {
         setReportingEqId(item.id);
         setReportDescription(item.anomaly || "");
         setReportTags(item.anomalyTags || []);
-        setReportQuantity(1);
+        setReportQuantity(item.currentQuantity);
         setExpandedDocId(null);
     }
   };
 
   const handleReportSubmit = (itemId: string) => {
     const isMissing = reportTags.includes('MANQUANT');
-    const quantityText = isMissing ? ` (Qté: ${reportQuantity})` : '';
-    // We incorporate the quantity into the description so it persists
-    // Si pas de description et pas de tags, on considère que c'est vide
-    const finalDescription = reportDescription ? `${reportDescription}${quantityText}` : "";
-
     const originalItem = vehicle.equipment.find(e => e.id === itemId);
+    
+    let newCurrentQuantity = originalItem?.currentQuantity || 0;
+    if (isMissing) {
+        newCurrentQuantity = reportQuantity;
+    }
+
+    const quantityText = isMissing ? ` (Qté réelle: ${reportQuantity}/${originalItem?.requiredQuantity})` : '';
+    // We incorporate the quantity into the description so it persists
+    // Si pas de description et que c'est manquant, on met un texte par défaut avec la quantité
+    const finalDescription = reportDescription 
+        ? `${reportDescription}${quantityText}` 
+        : (isMissing ? `Inventaire : Quantité réelle mise à jour${quantityText}` : "");
+
     const hadAnomaly = originalItem && (!!originalItem.anomaly || (originalItem.anomalyTags && originalItem.anomalyTags.length > 0));
-    const hasNewAnomaly = finalDescription.length > 0 || reportTags.length > 0;
+    const hasNewAnomaly = finalDescription.length > 0 || reportTags.length > 0 || (isMissing && newCurrentQuantity < (originalItem?.requiredQuantity || 0));
     const itemName = originalItem?.name || 'Matériel';
 
     onUpdateEquipment(vehicle.id, itemId, {
         anomaly: finalDescription,
         anomalyTags: reportTags,
+        currentQuantity: newCurrentQuantity,
         reportedBy: currentUser,
-        lastChecked: today
+        lastChecked: today,
+        lastCheckedByAvatarUrl: currentUserAvatarUrl
     });
     
     // Create automatic history log
@@ -336,7 +368,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
            date: new Date().toISOString().split('T')[0],
            type: 'equipment',
            status: 'warning',
-           description: `ANOMALIE SIGNALÉE - ${itemName} : ${reportTags.join(', ')}${quantityText}. ${reportDescription}`,
+           description: `SIGNALEMENT - ${itemName} : ${reportTags.join(', ')}${quantityText}. ${reportDescription}`,
            equipmentId: itemId
        });
     } else if (hadAnomaly && !hasNewAnomaly) {
@@ -361,6 +393,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
           anomaly: "",
           anomalyTags: [],
           condition: 'Bon',
+          currentQuantity: originalItem?.requiredQuantity || 0,
           reportedBy: "",
           lastChecked: today,
           lastCheckedByAvatarUrl: currentUserAvatarUrl
@@ -605,23 +638,33 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                       />
                     </div>
 
-                    {/* Quantity & Video */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Quantities & Video */}
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <label className={labelClasses}>QUANTITÉ</label>
+                        <label className={labelClasses}>QTÉ THÉORIQUE</label>
                         <input 
                             type="number" 
                             required 
                             className={inputClasses} 
-                            value={editingEqId ? editEqForm.quantity : newEq.quantity} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, quantity: parseInt(e.target.value)}) : setNewEq({...newEq, quantity: parseInt(e.target.value)})} 
+                            value={editingEqId ? editEqForm.requiredQuantity : newEq.requiredQuantity} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, requiredQuantity: parseInt(e.target.value)}) : setNewEq({...newEq, requiredQuantity: parseInt(e.target.value)})} 
                         />
                       </div>
                       <div>
-                        <label className={labelClasses}>VIDÉO (YOUTUBE URL)</label>
+                        <label className={labelClasses}>QTÉ RÉELLE</label>
+                        <input 
+                            type="number" 
+                            required 
+                            className={inputClasses} 
+                            value={editingEqId ? editEqForm.currentQuantity : newEq.currentQuantity} 
+                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, currentQuantity: parseInt(e.target.value)}) : setNewEq({...newEq, currentQuantity: parseInt(e.target.value)})} 
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClasses}>VIDÉO (YOUTUBE)</label>
                         <input 
                             type="text" 
-                            placeholder="https://youtube.com/..." 
+                            placeholder="https://..." 
                             className={inputClasses} 
                             value={editingEqId ? (editEqForm.videoUrl || '') : newEq.videoUrl} 
                             onChange={e => editingEqId ? setEditEqForm({...editEqForm, videoUrl: e.target.value}) : setNewEq({...newEq, videoUrl: e.target.value})} 
@@ -710,10 +753,11 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               <div className="space-y-4">
                 {filteredAndSortedEquipment.map((item) => {
                   const isCheckedToday = item.lastChecked === today;
-                  const hasAnomaly = !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
+                  const isMissing = item.currentQuantity < item.requiredQuantity;
+                  const hasAnomaly = isMissing || !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
                   const showDocs = expandedDocId === item.id;
                   const isReporting = reportingEqId === item.id;
-                  const isOutOfStock = item.quantity === 0;
+                  const isOutOfStock = item.requiredQuantity === 0;
 
                   return (
                     <div id={`eq-${item.id}`} key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${isOutOfStock ? 'opacity-40 grayscale border-slate-100 bg-slate-50/50' : hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday && !isOutOfStock ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
@@ -724,7 +768,11 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start">
                             <h5 className={`font-black text-slate-900 text-[14px] uppercase tracking-tight truncate ${isOutOfStock ? 'line-through decoration-slate-400 decoration-2' : ''}`}><Highlight text={item.name} search={equipmentSearch} /></h5>
-                            <span className={`text-[10px] font-black px-3 py-1 rounded-xl ${isOutOfStock ? 'bg-slate-200 text-slate-500' : 'bg-slate-900 text-white'}`}>x{item.quantity}</span>
+                            <div className="flex flex-col items-end">
+                                <span className={`text-[10px] font-black px-3 py-1 rounded-xl ${isMissing ? 'bg-red-600 text-white animate-pulse' : isOutOfStock ? 'bg-slate-200 text-slate-500' : 'bg-slate-900 text-white'}`}>
+                                    {item.currentQuantity} / {item.requiredQuantity}
+                                </span>
+                            </div>
                           </div>
                           <div className="flex items-center space-x-3 mt-2">
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{item.category}</span>
@@ -773,9 +821,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                               <button 
                                 onClick={() => handleVerifyItem(item.id)} 
                                 disabled={isOutOfStock}
-                                className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday && !isOutOfStock ? 'bg-green-600 border-green-600 text-white' : isOutOfStock ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}
+                                className={`text-[10px] font-black px-6 py-2 rounded-xl border-2 transition-all shadow-sm ${isCheckedToday && !isOutOfStock ? 'bg-green-600 border-green-600 text-white' : isOutOfStock ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed' : verifyingWithAnomalyId === item.id ? 'bg-orange-600 border-orange-600 text-white animate-pulse' : 'bg-white border-red-600 text-red-600 active:scale-95'}`}
                               >
-                                {isOutOfStock ? 'INDISPONIBLE' : isCheckedToday ? 'VÉRIFIÉ ✓' : 'VÉRIFIER'}
+                                {isOutOfStock ? 'INDISPONIBLE' : isCheckedToday ? 'VÉRIFIÉ ✓' : verifyingWithAnomalyId === item.id ? 'CONFIRMER ?' : 'VÉRIFIER'}
                               </button>
                             )}
                         </div>
@@ -811,7 +859,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                                 </div>
                                 {reportTags.includes('MANQUANT') && (
                                   <div className="mb-3 bg-red-50 p-3 rounded-xl border border-red-100 flex items-center justify-between animate-fade-in">
-                                     <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Quantité manquante</span>
+                                     <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">Quantité présente</span>
                                      <div className="flex items-center bg-white rounded-lg border border-red-200 shadow-sm">
                                         <button
                                           onClick={() => setReportQuantity(q => Math.max(1, q - 1))}

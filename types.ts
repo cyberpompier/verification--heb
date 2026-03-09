@@ -43,7 +43,8 @@ export interface Equipment {
   name: string;
   category: string;
   location: string;
-  quantity: number;
+  requiredQuantity: number;
+  currentQuantity: number;
   lastChecked: string;
   lastCheckedByAvatarUrl?: string;
   condition: 'Bon' | 'Moyen' | 'Mauvais' | 'À remplacer';

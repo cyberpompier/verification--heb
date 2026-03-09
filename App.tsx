@@ -8,6 +8,7 @@ import ProfileEditor from './components/ProfileEditor.tsx';
 import Auth from './components/Auth.tsx';
 import { analyzeFleetStatus } from './services/geminiService.ts';
 import { supabase, TABLES } from './lib/supabase.ts';
+import { INITIAL_VEHICLES } from './constants.ts';
 
 type View = 'fleet' | 'alerts' | 'admin';
 
@@ -40,7 +41,8 @@ const mapEquipmentFromDB = (data: any): Equipment => ({
   name: data.name,
   category: data.category,
   location: data.location,
-  quantity: data.quantity,
+  requiredQuantity: data.required_quantity || data.quantity || 0,
+  currentQuantity: data.current_quantity !== undefined ? data.current_quantity : (data.quantity || 0),
   lastChecked: data.last_checked,
   lastCheckedByAvatarUrl: data.last_checked_by_avatar_url,
   condition: data.condition,
@@ -59,7 +61,8 @@ const mapEquipmentToDB = (eq: Partial<Equipment>, vehicleId?: string) => ({
   name: eq.name,
   category: eq.category,
   location: eq.location,
-  quantity: eq.quantity,
+  required_quantity: eq.requiredQuantity,
+  current_quantity: eq.currentQuantity,
   last_checked: eq.lastChecked,
   last_checked_by_avatar_url: eq.lastCheckedByAvatarUrl,
   condition: eq.condition,
@@ -203,10 +206,10 @@ const App: React.FC = () => {
       if (vehiclesError) throw vehiclesError;
 
       // 2. Fetch Equipment (LIGHTWEIGHT ONLY) to avoid timeout 57014 due to legacy Base64 data
-      // We exclude: thumbnail_url, manual_url, video_url, documents
+      // We exclude: manual_url, video_url, documents
       const { data: equipmentData, error: equipmentError } = await supabase
         .from(TABLES.EQUIPMENT)
-        .select('id, name, category, location, quantity, last_checked, last_checked_by_avatar_url, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id');
+        .select('id, name, category, location, required_quantity, current_quantity, quantity, last_checked, last_checked_by_avatar_url, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id, thumbnail_url');
 
       if (equipmentError) throw equipmentError;
 
@@ -237,6 +240,11 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error('Erreur chargement engins:', err);
+      // Fallback to mock data if Supabase fails
+      if (vehicles.length === 0) {
+        console.log('Utilisation des données de secours (Mock Data)');
+        setVehicles(INITIAL_VEHICLES);
+      }
     } finally {
       setLoading(false);
     }
@@ -311,20 +319,66 @@ const App: React.FC = () => {
 
   const handleUpdateEquipment = async (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => {
     if (!canPerformChecks) return;
+
+    // 1. Optimistic Update
+    const updateLocalState = (prevVehicles: Vehicle[]) => prevVehicles.map(v => {
+      if (v.id === vehicleId) {
+        return {
+          ...v,
+          equipment: v.equipment.map(e => e.id === equipmentId ? { ...e, ...updates } : e)
+        };
+      }
+      return v;
+    });
+
+    setVehicles(updateLocalState);
+    if (selectedVehicle?.id === vehicleId) {
+      setSelectedVehicle(prev => prev ? {
+        ...prev,
+        equipment: prev.equipment.map(e => e.id === equipmentId ? { ...e, ...updates } : e)
+      } : null);
+    }
+
     try {
       const dbUpdates = mapEquipmentToDB(updates);
       const { error } = await supabase.from(TABLES.EQUIPMENT).update(dbUpdates).eq('id', equipmentId);
       if (error) throw error;
-      fetchVehicles();
     } catch (err) {
       console.error('Erreur mise à jour matériel:', err);
+      fetchVehicles(); // Rollback on error
     }
   };
 
   const handleAddHistoryEntry = async (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => {
     if (!canPerformChecks) return;
+    const meta = getHistoryMeta();
+    const newEntry: HistoryEntry = {
+      id: `temp-${Date.now()}`,
+      ...entry,
+      performedBy: meta.performed_by,
+      timestamp: meta.timestamp
+    };
+
+    // 1. Optimistic Update
+    const updateLocalState = (prevVehicles: Vehicle[]) => prevVehicles.map(v => {
+      if (v.id === vehicleId) {
+        return {
+          ...v,
+          history: [newEntry, ...(v.history || [])]
+        };
+      }
+      return v;
+    });
+
+    setVehicles(updateLocalState);
+    if (selectedVehicle?.id === vehicleId) {
+      setSelectedVehicle(prev => prev ? {
+        ...prev,
+        history: [newEntry, ...(prev.history || [])]
+      } : null);
+    }
+
     try {
-      const meta = getHistoryMeta();
       const dbEntry = {
         vehicle_id: vehicleId,
         date: entry.date,
@@ -337,9 +391,9 @@ const App: React.FC = () => {
       };
       const { error } = await supabase.from(TABLES.HISTORY).insert([dbEntry]);
       if (error) throw error;
-      fetchVehicles();
     } catch (err) {
       console.error('Erreur ajout historique:', err);
+      fetchVehicles(); // Rollback on error
     }
   };
 
@@ -365,7 +419,9 @@ const App: React.FC = () => {
     const alerts: { vehicle: Vehicle; equipment: Equipment }[] = [];
     vehicles.forEach(v => {
       v.equipment?.forEach(e => {
-        if (e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0)) {
+        const isMissing = e.currentQuantity < e.requiredQuantity;
+        const hasAnomaly = e.anomaly || (e.anomalyTags && e.anomalyTags.length > 0);
+        if (isMissing || hasAnomaly) {
           alerts.push({ vehicle: v, equipment: e });
         }
       });
@@ -400,9 +456,44 @@ const App: React.FC = () => {
       performed_by: meta.performed_by
     };
 
-    await supabase.from(TABLES.VEHICLES).update({ status: newStatus }).eq('id', id);
-    await supabase.from(TABLES.HISTORY).insert([historyEntry]);
-    fetchVehicles();
+    const newHistoryEntry: HistoryEntry = {
+      id: `temp-status-${Date.now()}`,
+      date: meta.date,
+      timestamp: meta.timestamp,
+      type: 'status',
+      status: entryStatus,
+      description: `État mis à jour vers : ${newStatus}.`,
+      performedBy: meta.performed_by
+    };
+
+    // 1. Optimistic Update
+    const updateLocalState = (prevVehicles: Vehicle[]) => prevVehicles.map(v => {
+      if (v.id === id) {
+        return {
+          ...v,
+          status: newStatus,
+          history: [newHistoryEntry, ...(v.history || [])]
+        };
+      }
+      return v;
+    });
+
+    setVehicles(updateLocalState);
+    if (selectedVehicle?.id === id) {
+      setSelectedVehicle(prev => prev ? {
+        ...prev,
+        status: newStatus,
+        history: [newHistoryEntry, ...(prev.history || [])]
+      } : null);
+    }
+
+    try {
+      await supabase.from(TABLES.VEHICLES).update({ status: newStatus }).eq('id', id);
+      await supabase.from(TABLES.HISTORY).insert([historyEntry]);
+    } catch (err) {
+      console.error('Erreur mise à jour état:', err);
+      fetchVehicles();
+    }
   };
 
   const triggerFleetAnalysis = async () => {
@@ -562,43 +653,84 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-4">
-                {fleetAnomalies.map(({ vehicle, equipment }) => (
-                  <button 
-                    key={equipment.id} 
-                    onClick={() => openVehicleDetails(vehicle, 'inventory', equipment.id)}
-                    className="bg-white p-5 rounded-[32px] border-2 border-orange-200 shadow-xl shadow-orange-600/5 text-left active:scale-[0.98] transition-all hover:border-orange-400"
-                  >
-                    <div className="flex items-start space-x-4">
-                      <div className="w-14 h-14 rounded-2xl bg-orange-50 border border-orange-100 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                        {equipment.thumbnailUrl ? 
-                          <img src={equipment.thumbnailUrl} className="w-full h-full object-cover" /> : 
-                          <svg className="w-8 h-8 text-orange-200" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" /></svg>
-                        }
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight truncate">{equipment.name}</h3>
-                          <span className="text-[9px] font-black text-white bg-slate-900 px-2.5 py-1 rounded-xl uppercase leading-none">{vehicle.callSign}</span>
-                        </div>
-                        <div className="mt-1 flex items-center space-x-2">
-                          <span className="text-[8px] font-black text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded border border-orange-100">⚠️ {equipment.anomalyTags?.join(', ') || 'Signalement'}</span>
-                          <span className="text-[8px] font-black text-slate-400 uppercase truncate">Empl : {equipment.location}</span>
-                        </div>
-                        <p className="mt-2 text-[11px] font-medium text-slate-600 line-clamp-2 leading-tight mb-3">
-                          {equipment.anomaly || 'Aucune description détaillée.'}
-                        </p>
-                        <div className="flex items-center justify-between border-t border-orange-100 pt-2 mt-auto">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center">
-                                📅 {new Date(equipment.lastChecked).toLocaleDateString('fr-FR')}
+                {fleetAnomalies.map(({ vehicle, equipment }) => {
+                  const isMissing = equipment.currentQuantity < equipment.requiredQuantity;
+                  const missingCount = equipment.requiredQuantity - equipment.currentQuantity;
+                  const cleanAnomaly = equipment.anomaly?.trim();
+
+                  return (
+                    <button 
+                      key={equipment.id} 
+                      onClick={() => openVehicleDetails(vehicle, 'inventory', equipment.id)}
+                      className="bg-white rounded-[32px] border-2 border-orange-200 shadow-xl shadow-orange-600/5 text-left active:scale-[0.98] transition-all hover:border-orange-400 overflow-hidden group"
+                    >
+                      <div className="flex flex-col sm:flex-row">
+                        {/* Photo Section */}
+                        <div className="w-full sm:w-24 h-24 sm:h-auto bg-slate-100 relative overflow-hidden">
+                          {equipment.thumbnailUrl ? (
+                            <img 
+                              src={equipment.thumbnailUrl} 
+                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-orange-50">
+                              <svg className="w-8 h-8 text-orange-200" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" /></svg>
+                            </div>
+                          )}
+                          <div className="absolute top-2 left-2">
+                            <span className="text-[8px] font-black text-white bg-slate-900/80 backdrop-blur-md px-2 py-1 rounded-lg uppercase tracking-widest shadow-lg">
+                              {vehicle.callSign}
                             </span>
-                            <span className="text-[9px] font-bold text-slate-600 uppercase tracking-wider flex items-center">
-                                👤 {equipment.reportedBy || 'Inconnu'}
-                            </span>
+                          </div>
+                          {isMissing && (
+                            <div className="absolute bottom-2 right-2 bg-red-600 text-white px-2 py-1 rounded-lg shadow-lg animate-bounce">
+                              <span className="text-[8px] font-black uppercase tracking-widest">Manquant: {missingCount}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Content Section */}
+                        <div className="flex-1 p-6 flex flex-col">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight leading-tight">{equipment.name}</h3>
+                            <div className="flex flex-wrap gap-1 justify-end">
+                              {equipment.anomalyTags?.map(tag => (
+                                <span key={tag} className="text-[8px] font-black text-orange-600 uppercase tracking-widest bg-orange-50 px-2 py-0.5 rounded border border-orange-100">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2 mb-4">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Emplacement:</span>
+                            <span className="text-[9px] font-black text-slate-600 uppercase">{equipment.location}</span>
+                          </div>
+
+                          <p className="text-sm font-medium text-slate-600 leading-relaxed mb-6 flex-1">
+                            {cleanAnomaly || 'Aucune description détaillée.'}
+                          </p>
+
+                          <div className="flex items-center justify-between border-t border-slate-100 pt-4 mt-auto">
+                            <div className="flex items-center space-x-3">
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Signalé le</span>
+                                <span className="text-[10px] font-bold text-slate-900">{new Date(equipment.lastChecked).toLocaleDateString('fr-FR')}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-3 text-right">
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Par</span>
+                                <span className="text-[10px] font-bold text-slate-900 uppercase">{equipment.reportedBy || 'Inconnu'}</span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
-                ))}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>

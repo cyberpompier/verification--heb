@@ -12,9 +12,9 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     crewCapacity: 6,
     imageUrl: 'https://images.unsplash.com/photo-1582560475093-ba66accbc424?auto=format&fit=crop&q=80&w=600',
     equipment: [
-      { id: 'e1', name: 'Tuyau de refoulement 70mm', category: 'Tuyaux', location: 'Coffre Arrière', quantity: 4, lastChecked: '2024-11-01', condition: 'Bon' },
-      { id: 'e2', name: 'ARI (Appareil Respiratoire)', category: 'EPI', location: 'Cabine', quantity: 6, lastChecked: '2024-11-05', condition: 'Bon' },
-      { id: 'e4', name: 'Lance Multi-débit', category: 'Lances', location: 'Coffre Latéral Droit', quantity: 2, lastChecked: '2024-11-10', condition: 'Bon' },
+      { id: 'e1', name: 'Tuyau de refoulement 70mm', category: 'Tuyaux', location: 'Coffre Arrière', requiredQuantity: 4, currentQuantity: 4, lastChecked: '2024-11-01', condition: 'Bon' },
+      { id: 'e2', name: 'ARI (Appareil Respiratoire)', category: 'EPI', location: 'Cabine', requiredQuantity: 6, currentQuantity: 6, lastChecked: '2024-11-05', condition: 'Bon' },
+      { id: 'e4', name: 'Lance Multi-débit', category: 'Lances', location: 'Coffre Latéral Droit', requiredQuantity: 2, currentQuantity: 2, lastChecked: '2024-11-10', condition: 'Bon' },
     ],
     history: [
       { id: 'h1', date: '2024-10-15', timestamp: '08:30', performedBy: 'Système', type: 'maintenance', description: 'Inspection complète du moteur et vidange.' },
@@ -32,7 +32,7 @@ export const INITIAL_VEHICLES: Vehicle[] = [
     crewCapacity: 4,
     imageUrl: 'https://images.ladepeche.fr/api/v1/images/view/61bc0f25d286c2743d5f2106/large/image.jpg',
     equipment: [
-      { id: 'e3', name: 'Tronçonneuse à disque', category: 'Outils', location: 'Coffre Bas', quantity: 1, lastChecked: '2024-11-20', condition: 'Moyen' },
+      { id: 'e3', name: 'Tronçonneuse à disque', category: 'Outils', location: 'Coffre Bas', requiredQuantity: 1, currentQuantity: 1, lastChecked: '2024-11-20', condition: 'Moyen' },
     ],
     history: [
       { id: 'h3', date: '2024-12-01', timestamp: '10:15', performedBy: 'Système', type: 'status', description: 'Entré en atelier pour réparation de fuite hydraulique.' }
