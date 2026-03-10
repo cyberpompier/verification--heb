@@ -22,7 +22,7 @@ export const BUCKET_NAME = 'firetrack-assets';
  * @param quality Compression quality (0 to 1)
  * @returns A promise that resolves to the compressed Blob
  */
-export const compressImage = async (file: File, maxWidth = 1024, quality = 0.7): Promise<Blob> => {
+export const compressImage = async (file: File, maxWidth = 600, quality = 0.4): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
