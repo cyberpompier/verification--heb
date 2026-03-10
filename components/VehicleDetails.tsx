@@ -102,6 +102,11 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     return Array.from(locs).filter(l => !!l).sort();
   }, [vehicle.equipment]);
 
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set(vehicle.equipment.map(e => e.category));
+    return Array.from(cats).filter(c => !!c).sort();
+  }, [vehicle.equipment]);
+
   const filteredAndSortedEquipment = useMemo(() => {
     let items = [...vehicle.equipment];
     if (equipmentSearch.trim()) {
@@ -280,6 +285,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   };
 
   const handleRemoveDoc = (docId: string) => {
+     if (!window.confirm('Supprimer ce document ?')) return;
      if (editingEqId) {
         setEditEqForm(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
      } else {
@@ -387,6 +393,8 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   // Helper pour clôturer rapidement
   const handleQuickResolve = (itemId: string) => {
+      if (!window.confirm('Voulez-vous clôturer cet incident et remettre le matériel en état nominal ?')) return;
+      
       const originalItem = vehicle.equipment.find(e => e.id === itemId);
       
       onUpdateEquipment(vehicle.id, itemId, {
@@ -620,22 +628,34 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
                     {/* Category & Location */}
                     <div className="grid grid-cols-2 gap-4">
-                      <input 
-                        type="text" 
-                        required 
-                        placeholder="Catégorie"
-                        className={inputClasses} 
-                        value={editingEqId ? editEqForm.category : newEq.category} 
-                        onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
-                      />
-                      <input 
-                        type="text" 
-                        required 
-                        placeholder="Emplacement"
-                        className={inputClasses} 
-                        value={editingEqId ? editEqForm.location : newEq.location} 
-                        onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
-                      />
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="Catégorie"
+                          list="categories-list"
+                          className={inputClasses} 
+                          value={editingEqId ? editEqForm.category : newEq.category} 
+                          onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
+                        />
+                        <datalist id="categories-list">
+                          {uniqueCategories.map(cat => <option key={cat} value={cat} />)}
+                        </datalist>
+                      </div>
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          required 
+                          placeholder="Emplacement"
+                          list="locations-list"
+                          className={inputClasses} 
+                          value={editingEqId ? editEqForm.location : newEq.location} 
+                          onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
+                        />
+                        <datalist id="locations-list">
+                          {uniqueLocations.map(loc => <option key={loc} value={loc} />)}
+                        </datalist>
+                      </div>
                     </div>
 
                     {/* Quantities & Video */}
