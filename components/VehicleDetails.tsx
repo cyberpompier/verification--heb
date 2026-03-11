@@ -67,6 +67,22 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const [docName, setDocName] = useState('');
   const [docUrl, setDocUrl] = useState('');
 
+  // Confirmation Modal State
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    confirmText?: string;
+    cancelText?: string;
+    isDestructive?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
   const isAdmin = userRole === UserRole.ADMIN;
   const isReader = userRole === UserRole.READER;
   
@@ -190,7 +206,13 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const handleDeleteSubmit = () => {
     if (!isAdmin || !editingEqId) return;
-    if (window.confirm('Confirmer la suppression définitive de cet équipement ?')) {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Supprimer l\'équipement',
+      message: 'Confirmer la suppression définitive de cet équipement ?',
+      confirmText: 'Supprimer',
+      isDestructive: true,
+      onConfirm: () => {
         const item = vehicle.equipment.find(e => e.id === editingEqId);
         onRemoveEquipment(vehicle.id, editingEqId);
         
@@ -205,7 +227,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         }
         setEditingEqId(null);
         setEditEqForm({});
-    }
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const startEditing = async (item: Equipment) => {
@@ -285,12 +309,21 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   };
 
   const handleRemoveDoc = (docId: string) => {
-     if (!window.confirm('Supprimer ce document ?')) return;
-     if (editingEqId) {
-        setEditEqForm(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
-     } else {
-        setNewEq(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
-     }
+     setConfirmDialog({
+       isOpen: true,
+       title: 'Supprimer le document',
+       message: 'Voulez-vous vraiment supprimer ce document ?',
+       confirmText: 'Supprimer',
+       isDestructive: true,
+       onConfirm: () => {
+         if (editingEqId) {
+            setEditEqForm(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
+         } else {
+            setNewEq(prev => ({...prev, documents: (prev.documents || []).filter(d => d.id !== docId)}));
+         }
+         setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+       }
+     });
   };
 
   const handleEquipmentFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -316,7 +349,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                 setNewEq(prev => ({ ...prev, thumbnailUrl: publicUrl }));
             }
         } else {
-            alert('Échec de l\'envoi de l\'image');
+            console.error('Échec de l\'envoi de l\'image');
         }
     } catch (err) {
         console.error('Upload Error', err);
@@ -393,30 +426,38 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   // Helper pour clôturer rapidement
   const handleQuickResolve = (itemId: string) => {
-      if (!window.confirm('Voulez-vous clôturer cet incident et remettre le matériel en état nominal ?')) return;
-      
-      const originalItem = vehicle.equipment.find(e => e.id === itemId);
-      
-      onUpdateEquipment(vehicle.id, itemId, {
-          anomaly: "",
-          anomalyTags: [],
-          condition: 'Bon',
-          currentQuantity: originalItem?.requiredQuantity || 0,
-          reportedBy: "",
-          lastChecked: today,
-          lastCheckedByAvatarUrl: currentUserAvatarUrl
-      });
+      setConfirmDialog({
+        isOpen: true,
+        title: 'Clôturer l\'incident',
+        message: 'Voulez-vous clôturer cet incident et remettre le matériel en état nominal ?',
+        confirmText: 'Clôturer',
+        isDestructive: false,
+        onConfirm: () => {
+          const originalItem = vehicle.equipment.find(e => e.id === itemId);
+          
+          onUpdateEquipment(vehicle.id, itemId, {
+              anomaly: "",
+              anomalyTags: [],
+              condition: 'Bon',
+              currentQuantity: originalItem?.requiredQuantity || 0,
+              reportedBy: "",
+              lastChecked: today,
+              lastCheckedByAvatarUrl: currentUserAvatarUrl
+          });
 
-      if (originalItem) {
-          onAddHistoryEntry(vehicle.id, {
-            date: new Date().toISOString().split('T')[0],
-            type: 'maintenance',
-            status: 'success',
-            description: `RÉSOLUTION - ${originalItem.name} : Incident clôturé, matériel remis en état nominal.`,
-            equipmentId: itemId
-        });
-      }
-      setReportingEqId(null);
+          if (originalItem) {
+              onAddHistoryEntry(vehicle.id, {
+                date: new Date().toISOString().split('T')[0],
+                type: 'maintenance',
+                status: 'success',
+                description: `RÉSOLUTION - ${originalItem.name} : Incident clôturé, matériel remis en état nominal.`,
+                equipmentId: itemId
+            });
+          }
+          setReportingEqId(null);
+          setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+        }
+      });
   };
 
   const toggleReportTag = (tag: string) => {
@@ -1108,6 +1149,29 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                 className="w-full bg-white text-slate-400 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border border-slate-200 active:scale-95 transition-all"
               >
                 Retour à l'inventaire
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Confirm Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-slide-up">
+            <h3 className="text-lg font-black text-slate-900 mb-2 uppercase tracking-tight">{confirmDialog.title}</h3>
+            <p className="text-sm text-slate-600 font-medium mb-6">{confirmDialog.message}</p>
+            <div className="flex space-x-3">
+              <button 
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="flex-1 py-3 rounded-xl font-black text-[11px] uppercase tracking-widest bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+              >
+                {confirmDialog.cancelText || 'Annuler'}
+              </button>
+              <button 
+                onClick={confirmDialog.onConfirm}
+                className={`flex-1 py-3 rounded-xl font-black text-[11px] uppercase tracking-widest text-white shadow-lg transition-all active:scale-95 ${confirmDialog.isDestructive ? 'bg-red-600 shadow-red-600/20 hover:bg-red-700' : 'bg-slate-900 shadow-slate-900/20 hover:bg-black'}`}
+              >
+                {confirmDialog.confirmText || 'Confirmer'}
               </button>
             </div>
           </div>

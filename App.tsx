@@ -264,7 +264,6 @@ const App: React.FC = () => {
       setIsFirstConnection(false);
     } catch (err) {
       console.error('Erreur sauvegarde profil:', err);
-      alert('Erreur lors de la sauvegarde du profil.');
     }
   };
 

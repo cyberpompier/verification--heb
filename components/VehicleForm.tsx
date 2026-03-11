@@ -20,6 +20,7 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
   });
 
   const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -32,12 +33,13 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
     if (!file) return;
 
     setIsUploading(true);
+    setError(null);
     const publicUrl = await uploadImage(file, 'vehicles');
     
     if (publicUrl) {
       setFormData({ ...formData, imageUrl: publicUrl });
     } else {
-      alert("Erreur lors de l'envoi de l'image. Veuillez réessayer.");
+      setError("Erreur lors de l'envoi de l'image. Veuillez réessayer.");
     }
     setIsUploading(false);
   };
@@ -60,6 +62,11 @@ const VehicleForm: React.FC<VehicleFormProps> = ({ onSave, onCancel }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-xs font-bold border-2 border-red-100">
+              {error}
+            </div>
+          )}
           <div className="space-y-4">
             <div>
               <label className={labelClasses}>Indicatif Radio</label>

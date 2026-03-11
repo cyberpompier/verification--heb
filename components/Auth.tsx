@@ -17,7 +17,7 @@ const Auth: React.FC = () => {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        alert('Vérifiez votre email pour confirmer l\'inscription !');
+        setError('Vérifiez votre email pour confirmer l\'inscription !');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
