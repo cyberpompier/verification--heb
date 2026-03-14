@@ -46,6 +46,7 @@ export interface Equipment {
   requiredQuantity: number;
   currentQuantity: number;
   lastChecked: string;
+  lastCheckedBy?: string;
   lastCheckedByAvatarUrl?: string;
   condition: 'Bon' | 'Moyen' | 'Mauvais' | 'À remplacer';
   notes?: string;
@@ -81,6 +82,10 @@ export interface Vehicle {
   equipment: Equipment[];
   history: HistoryEntry[];
   imageUrl: string;
+  lastVerification?: {
+    date: string;
+    performedBy: string;
+  };
 }
 
 export interface FleetStats {

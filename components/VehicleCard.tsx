@@ -9,10 +9,12 @@ interface VehicleCardProps {
 
 const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
   const today = new Date().toISOString().split('T')[0];
-  const verifiableEquipment = vehicle.equipment.filter(e => e.quantity > 0);
+  const verifiableEquipment = vehicle.equipment.filter(e => e.requiredQuantity > 0);
   const totalItems = verifiableEquipment.length;
   const verifiedItems = verifiableEquipment.filter(e => e.lastChecked === today).length;
   const isInventoryInProgress = verifiedItems > 0 && verifiedItems < totalItems;
+
+  const lastVerification = vehicle.lastVerification;
   
   // Get the avatar of the person who started the inventory today
   const activeUserAvatar = isInventoryInProgress 
@@ -82,7 +84,11 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
         </div>
         
         <div className="mt-5 pt-4 border-t-2 border-slate-50 flex items-center justify-between">
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">Révision : {vehicle.lastService}</span>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-tight">
+            {lastVerification 
+              ? `Vérifié : ${lastVerification.date}${lastVerification.performedBy ? ` - ${lastVerification.performedBy}` : ''}`
+              : `Révision : ${vehicle.lastService}`}
+          </span>
           <div className="flex items-center space-x-2">
              <div className="px-2.5 py-1 rounded-lg bg-slate-900 text-white flex items-center space-x-1.5 shadow-md">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4" strokeWidth="3"/></svg>

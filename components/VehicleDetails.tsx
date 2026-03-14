@@ -92,6 +92,13 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
   const today = new Date().toISOString().split('T')[0];
   const equipmentFileInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const editFormRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if ((editingEqId || isAdding) && editFormRef.current) {
+      editFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [editingEqId, isAdding]);
   
   const [newEq, setNewEq] = useState<Omit<Equipment, 'id'>>({
     name: '', category: '', location: '', requiredQuantity: 1, currentQuantity: 1, condition: 'Bon',
@@ -128,9 +135,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     if (equipmentSearch.trim()) {
       const query = equipmentSearch.toLowerCase();
       items = items.filter(item => 
-        item.name.toLowerCase().includes(query) || 
-        item.category.toLowerCase().includes(query) ||
-        item.location.toLowerCase().includes(query)
+        (item.name || '').toLowerCase().includes(query) || 
+        (item.category || '').toLowerCase().includes(query) ||
+        (item.location || '').toLowerCase().includes(query)
       );
     }
     if (selectedLocation) items = items.filter(item => item.location === selectedLocation);
@@ -138,7 +145,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       const aChecked = a.lastChecked === today;
       const bChecked = b.lastChecked === today;
       if (aChecked !== bChecked) return aChecked ? 1 : -1;
-      return a.name.localeCompare(b.name);
+      return (a.name || '').localeCompare(b.name || '');
     });
   }, [vehicle.equipment, equipmentSearch, selectedLocation, today]);
 
@@ -262,6 +269,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     // Update the item
     onUpdateEquipment(vehicle.id, itemId, { 
       lastChecked: today,
+      lastCheckedBy: currentUser,
       lastCheckedByAvatarUrl: currentUserAvatarUrl 
     });
 
@@ -398,6 +406,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         currentQuantity: newCurrentQuantity,
         reportedBy: currentUser,
         lastChecked: today,
+        lastCheckedBy: currentUser,
         lastCheckedByAvatarUrl: currentUserAvatarUrl
     });
     
@@ -442,6 +451,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               currentQuantity: originalItem?.requiredQuantity || 0,
               reportedBy: "",
               lastChecked: today,
+              lastCheckedBy: currentUser,
               lastCheckedByAvatarUrl: currentUserAvatarUrl
           });
 
@@ -503,6 +513,192 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
 
   const inputClasses = "w-full text-xs p-3 rounded-xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-red-500 text-slate-900 transition-all placeholder:text-slate-400/80";
   const labelClasses = "block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1";
+
+  const renderEquipmentForm = () => (
+    <form ref={editFormRef} onSubmit={editingEqId ? handleEditSubmit : handleAddSubmit} className="bg-white p-6 rounded-[32px] border-2 border-slate-900 shadow-xl space-y-5 animate-slide-up">
+      <h4 className="text-xs font-black uppercase tracking-widest text-red-600 mb-2">{editingEqId ? 'ÉDITER MATÉRIEL' : 'NOUVEAU MATÉRIEL'}</h4>
+      
+      <div className="space-y-4">
+        {/* Image + Name Row */}
+        <div className="flex items-start gap-4">
+          {/* Image Uploader */}
+          <button 
+            type="button"
+            onClick={() => {
+              if (!isUploadingEqImage) {
+                setEditingEqIdForImage(null); // Ensure we are targeting form state
+                equipmentFileInputRef.current?.click();
+              }
+            }}
+            className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:border-red-500 hover:text-red-500 transition-colors flex-shrink-0 overflow-hidden relative"
+          >
+             {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? (
+                <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className={`w-full h-full object-cover ${isUploadingEqImage ? 'opacity-50' : ''}`} />
+             ) : (
+                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5" /></svg>
+             )}
+             {isUploadingEqImage && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
+                </div>
+             )}
+          </button>
+          
+          {/* Name Input - Large */}
+          <div className="flex-1">
+            <input 
+                type="text" 
+                placeholder="Nom de l'équipement"
+                required 
+                className="w-full h-20 sm:h-24 text-lg p-4 rounded-3xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-red-500 text-slate-900 transition-all placeholder:text-slate-300"
+                value={editingEqId ? editEqForm.name : newEq.name} 
+                onChange={e => editingEqId ? setEditEqForm({...editEqForm, name: e.target.value}) : setNewEq({...newEq, name: e.target.value})} 
+            />
+          </div>
+        </div>
+
+        {/* Category & Location */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="relative">
+            <input 
+              type="text" 
+              required 
+              placeholder="Catégorie"
+              list="categories-list"
+              className={inputClasses} 
+              value={editingEqId ? editEqForm.category : newEq.category} 
+              onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
+            />
+            <datalist id="categories-list">
+              {uniqueCategories.map(cat => <option key={cat} value={cat} />)}
+            </datalist>
+          </div>
+          <div className="relative">
+            <input 
+              type="text" 
+              required 
+              placeholder="Emplacement"
+              list="locations-list"
+              className={inputClasses} 
+              value={editingEqId ? editEqForm.location : newEq.location} 
+              onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
+            />
+            <datalist id="locations-list">
+              {uniqueLocations.map(loc => <option key={loc} value={loc} />)}
+            </datalist>
+          </div>
+        </div>
+
+        {/* Quantities & Video */}
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <label className={labelClasses}>QTÉ THÉORIQUE</label>
+            <input 
+                type="number" 
+                required 
+                className={inputClasses} 
+                value={editingEqId ? editEqForm.requiredQuantity : newEq.requiredQuantity} 
+                onChange={e => editingEqId ? setEditEqForm({...editEqForm, requiredQuantity: parseInt(e.target.value)}) : setNewEq({...newEq, requiredQuantity: parseInt(e.target.value)})} 
+            />
+          </div>
+          <div>
+            <label className={labelClasses}>QTÉ RÉELLE</label>
+            <input 
+                type="number" 
+                required 
+                className={inputClasses} 
+                value={editingEqId ? editEqForm.currentQuantity : newEq.currentQuantity} 
+                onChange={e => editingEqId ? setEditEqForm({...editEqForm, currentQuantity: parseInt(e.target.value)}) : setNewEq({...newEq, currentQuantity: parseInt(e.target.value)})} 
+            />
+          </div>
+          <div>
+            <label className={labelClasses}>VIDÉO (YOUTUBE)</label>
+            <input 
+                type="text" 
+                placeholder="https://..." 
+                className={inputClasses} 
+                value={editingEqId ? (editEqForm.videoUrl || '') : newEq.videoUrl} 
+                onChange={e => editingEqId ? setEditEqForm({...editEqForm, videoUrl: e.target.value}) : setNewEq({...newEq, videoUrl: e.target.value})} 
+            />
+          </div>
+        </div>
+
+        {/* Condition & State */}
+        <div>
+             <label className={labelClasses}>ÉTAT ACTUEL</label>
+             <select className={inputClasses} value={editingEqId ? editEqForm.condition : newEq.condition} onChange={e => editingEqId ? setEditEqForm({...editEqForm, condition: e.target.value as any}) : setNewEq({...newEq, condition: e.target.value as any})}>
+                <option>Bon</option><option>Moyen</option><option>Mauvais</option><option>À remplacer</option>
+             </select>
+        </div>
+        
+        {/* Notes Field (Added) */}
+        <div>
+            <label className={labelClasses}>NOTES / OBSERVATIONS</label>
+            <textarea 
+                className={inputClasses + " h-24 resize-none"} 
+                placeholder="Instructions particulières, détails..."
+                value={editingEqId ? (editEqForm.notes || '') : newEq.notes} 
+                onChange={e => editingEqId ? setEditEqForm({...editEqForm, notes: e.target.value}) : setNewEq({...newEq, notes: e.target.value})} 
+            />
+        </div>
+
+        {/* Documentation Section */}
+        <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
+            <label className={labelClasses}>DOCUMENTATION (MANUELS, PDF)</label>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+                <input 
+                    type="text" 
+                    placeholder="Nom du doc" 
+                    className="w-full text-xs p-3 rounded-xl bg-white border-2 border-slate-200 font-bold outline-none focus:border-red-500"
+                    value={docName}
+                    onChange={e => setDocName(e.target.value)}
+                />
+                <input 
+                    type="text" 
+                    placeholder="URL du doc" 
+                    className="w-full text-xs p-3 rounded-xl bg-white border-2 border-slate-200 font-bold outline-none focus:border-red-500"
+                    value={docUrl}
+                    onChange={e => setDocUrl(e.target.value)}
+                />
+            </div>
+            <button 
+                type="button" 
+                onClick={handleAddDoc} 
+                className="w-full bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-slate-900/10"
+            >
+                AJOUTER AU DOSSIER
+            </button>
+            
+            {/* List of added documents */}
+            <div className="mt-3 space-y-2">
+                {((editingEqId ? editEqForm.documents : newEq.documents) || []).map(doc => (
+                    <div key={doc.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                            <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
+                            <span className="text-[11px] font-bold text-slate-700 truncate">{doc.name}</span>
+                        </div>
+                        <button type="button" onClick={() => handleRemoveDoc(doc.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center space-x-2">
+            <button type="button" onClick={() => { setIsAdding(false); setEditingEqId(null); }} className="text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Annuler</button>
+            {editingEqId && isAdmin && (
+                <button type="button" onClick={handleDeleteSubmit} className="text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-50 px-3 py-2 rounded-xl transition-colors">Supprimer</button>
+            )}
+          </div>
+          <button type="submit" disabled={isUploadingEqImage} className="bg-red-600 text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed">
+             {isUploadingEqImage ? 'ENVOI...' : 'ENREGISTRER'}
+          </button>
+      </div>
+    </form>
+  );
 
   return (
     <div className="fixed inset-0 bg-black/80 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 backdrop-blur-md animate-fade-in">
@@ -623,196 +819,16 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                 </div>
               </div>
 
-              {/* Formulaire d'ajout / édition style "PWA Clean" */}
-              {(isAdding || editingEqId) && (
-                <form onSubmit={editingEqId ? handleEditSubmit : handleAddSubmit} className="bg-white p-6 rounded-[32px] border-2 border-slate-900 shadow-xl space-y-5 animate-slide-up">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-red-600 mb-2">{editingEqId ? 'ÉDITER MATÉRIEL' : 'NOUVEAU MATÉRIEL'}</h4>
-                  
-                  <div className="space-y-4">
-                    {/* Image + Name Row */}
-                    <div className="flex items-start gap-4">
-                      {/* Image Uploader */}
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          if (!isUploadingEqImage) {
-                            setEditingEqIdForImage(null); // Ensure we are targeting form state
-                            equipmentFileInputRef.current?.click();
-                          }
-                        }}
-                        className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-300 hover:border-red-500 hover:text-red-500 transition-colors flex-shrink-0 overflow-hidden relative"
-                      >
-                         {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? (
-                            <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className={`w-full h-full object-cover ${isUploadingEqImage ? 'opacity-50' : ''}`} />
-                         ) : (
-                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5" /></svg>
-                         )}
-                         {isUploadingEqImage && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-red-600"></div>
-                            </div>
-                         )}
-                      </button>
-                      
-                      {/* Name Input - Large */}
-                      <div className="flex-1">
-                        <input 
-                            type="text" 
-                            placeholder="Nom de l'équipement"
-                            required 
-                            className="w-full h-20 sm:h-24 text-lg p-4 rounded-3xl bg-slate-50 border-2 border-slate-100 font-bold outline-none focus:border-red-500 text-slate-900 transition-all placeholder:text-slate-300"
-                            value={editingEqId ? editEqForm.name : newEq.name} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, name: e.target.value}) : setNewEq({...newEq, name: e.target.value})} 
-                        />
-                      </div>
-                    </div>
-
-                    {/* Category & Location */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="Catégorie"
-                          list="categories-list"
-                          className={inputClasses} 
-                          value={editingEqId ? editEqForm.category : newEq.category} 
-                          onChange={e => editingEqId ? setEditEqForm({...editEqForm, category: e.target.value}) : setNewEq({...newEq, category: e.target.value})} 
-                        />
-                        <datalist id="categories-list">
-                          {uniqueCategories.map(cat => <option key={cat} value={cat} />)}
-                        </datalist>
-                      </div>
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          required 
-                          placeholder="Emplacement"
-                          list="locations-list"
-                          className={inputClasses} 
-                          value={editingEqId ? editEqForm.location : newEq.location} 
-                          onChange={e => editingEqId ? setEditEqForm({...editEqForm, location: e.target.value}) : setNewEq({...newEq, location: e.target.value})} 
-                        />
-                        <datalist id="locations-list">
-                          {uniqueLocations.map(loc => <option key={loc} value={loc} />)}
-                        </datalist>
-                      </div>
-                    </div>
-
-                    {/* Quantities & Video */}
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <label className={labelClasses}>QTÉ THÉORIQUE</label>
-                        <input 
-                            type="number" 
-                            required 
-                            className={inputClasses} 
-                            value={editingEqId ? editEqForm.requiredQuantity : newEq.requiredQuantity} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, requiredQuantity: parseInt(e.target.value)}) : setNewEq({...newEq, requiredQuantity: parseInt(e.target.value)})} 
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClasses}>QTÉ RÉELLE</label>
-                        <input 
-                            type="number" 
-                            required 
-                            className={inputClasses} 
-                            value={editingEqId ? editEqForm.currentQuantity : newEq.currentQuantity} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, currentQuantity: parseInt(e.target.value)}) : setNewEq({...newEq, currentQuantity: parseInt(e.target.value)})} 
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClasses}>VIDÉO (YOUTUBE)</label>
-                        <input 
-                            type="text" 
-                            placeholder="https://..." 
-                            className={inputClasses} 
-                            value={editingEqId ? (editEqForm.videoUrl || '') : newEq.videoUrl} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, videoUrl: e.target.value}) : setNewEq({...newEq, videoUrl: e.target.value})} 
-                        />
-                      </div>
-                    </div>
-
-                    {/* Condition & State */}
-                    <div>
-                         <label className={labelClasses}>ÉTAT ACTUEL</label>
-                         <select className={inputClasses} value={editingEqId ? editEqForm.condition : newEq.condition} onChange={e => editingEqId ? setEditEqForm({...editEqForm, condition: e.target.value as any}) : setNewEq({...newEq, condition: e.target.value as any})}>
-                            <option>Bon</option><option>Moyen</option><option>Mauvais</option><option>À remplacer</option>
-                         </select>
-                    </div>
-                    
-                    {/* Notes Field (Added) */}
-                    <div>
-                        <label className={labelClasses}>NOTES / OBSERVATIONS</label>
-                        <textarea 
-                            className={inputClasses + " h-24 resize-none"} 
-                            placeholder="Instructions particulières, détails..."
-                            value={editingEqId ? (editEqForm.notes || '') : newEq.notes} 
-                            onChange={e => editingEqId ? setEditEqForm({...editEqForm, notes: e.target.value}) : setNewEq({...newEq, notes: e.target.value})} 
-                        />
-                    </div>
-
-                    {/* Documentation Section */}
-                    <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                        <label className={labelClasses}>DOCUMENTATION (MANUELS, PDF)</label>
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                            <input 
-                                type="text" 
-                                placeholder="Nom du doc" 
-                                className="w-full text-xs p-3 rounded-xl bg-white border-2 border-slate-200 font-bold outline-none focus:border-red-500"
-                                value={docName}
-                                onChange={e => setDocName(e.target.value)}
-                            />
-                            <input 
-                                type="text" 
-                                placeholder="URL du doc" 
-                                className="w-full text-xs p-3 rounded-xl bg-white border-2 border-slate-200 font-bold outline-none focus:border-red-500"
-                                value={docUrl}
-                                onChange={e => setDocUrl(e.target.value)}
-                            />
-                        </div>
-                        <button 
-                            type="button" 
-                            onClick={handleAddDoc} 
-                            className="w-full bg-slate-900 text-white py-3 rounded-xl text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-slate-900/10"
-                        >
-                            AJOUTER AU DOSSIER
-                        </button>
-                        
-                        {/* List of added documents */}
-                        <div className="mt-3 space-y-2">
-                            {((editingEqId ? editEqForm.documents : newEq.documents) || []).map(doc => (
-                                <div key={doc.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                                    <div className="flex items-center space-x-2 overflow-hidden">
-                                        <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" /></svg>
-                                        <span className="text-[11px] font-bold text-slate-700 truncate">{doc.name}</span>
-                                    </div>
-                                    <button type="button" onClick={() => handleRemoveDoc(doc.id)} className="text-slate-400 hover:text-red-500 transition-colors p-1">
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2">
-                      <div className="flex items-center space-x-2">
-                        <button type="button" onClick={() => { setIsAdding(false); setEditingEqId(null); }} className="text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Annuler</button>
-                        {editingEqId && isAdmin && (
-                            <button type="button" onClick={handleDeleteSubmit} className="text-red-500 font-black text-[10px] uppercase tracking-widest hover:bg-red-50 px-3 py-2 rounded-xl transition-colors">Supprimer</button>
-                        )}
-                      </div>
-                      <button type="submit" disabled={isUploadingEqImage} className="bg-red-600 text-white px-8 py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-red-600/20 disabled:opacity-50 disabled:cursor-not-allowed">
-                         {isUploadingEqImage ? 'ENVOI...' : 'ENREGISTRER'}
-                      </button>
-                  </div>
-                </form>
-              )}
+              {/* Formulaire d'ajout style "PWA Clean" */}
+              {isAdding && !editingEqId && renderEquipmentForm()}
 
               {/* Cards List */}
               <div className="space-y-4">
                 {filteredAndSortedEquipment.map((item) => {
+                  if (editingEqId === item.id) {
+                    return <div key={item.id}>{renderEquipmentForm()}</div>;
+                  }
+
                   const isCheckedToday = item.lastChecked === today;
                   const isMissing = item.currentQuantity < item.requiredQuantity;
                   const hasAnomaly = isMissing || !!item.anomaly || (item.anomalyTags && item.anomalyTags.length > 0);
