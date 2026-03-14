@@ -135,9 +135,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     if (equipmentSearch.trim()) {
       const query = equipmentSearch.toLowerCase();
       items = items.filter(item => 
-        (item.name || '').toLowerCase().includes(query) || 
-        (item.category || '').toLowerCase().includes(query) ||
-        (item.location || '').toLowerCase().includes(query)
+        item.name.toLowerCase().includes(query) || 
+        item.category.toLowerCase().includes(query) ||
+        item.location.toLowerCase().includes(query)
       );
     }
     if (selectedLocation) items = items.filter(item => item.location === selectedLocation);
@@ -145,7 +145,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
       const aChecked = a.lastChecked === today;
       const bChecked = b.lastChecked === today;
       if (aChecked !== bChecked) return aChecked ? 1 : -1;
-      return (a.name || '').localeCompare(b.name || '');
+      return a.name.localeCompare(b.name);
     });
   }, [vehicle.equipment, equipmentSearch, selectedLocation, today]);
 
@@ -269,7 +269,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     // Update the item
     onUpdateEquipment(vehicle.id, itemId, { 
       lastChecked: today,
-      lastCheckedBy: currentUser,
       lastCheckedByAvatarUrl: currentUserAvatarUrl 
     });
 
@@ -406,7 +405,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         currentQuantity: newCurrentQuantity,
         reportedBy: currentUser,
         lastChecked: today,
-        lastCheckedBy: currentUser,
         lastCheckedByAvatarUrl: currentUserAvatarUrl
     });
     
@@ -451,7 +449,6 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               currentQuantity: originalItem?.requiredQuantity || 0,
               reportedBy: "",
               lastChecked: today,
-              lastCheckedBy: currentUser,
               lastCheckedByAvatarUrl: currentUserAvatarUrl
           });
 

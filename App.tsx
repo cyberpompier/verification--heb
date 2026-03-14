@@ -44,7 +44,6 @@ const mapEquipmentFromDB = (data: any): Equipment => ({
   requiredQuantity: data.required_quantity || data.quantity || 0,
   currentQuantity: data.current_quantity !== undefined ? data.current_quantity : (data.quantity || 0),
   lastChecked: data.last_checked,
-  lastCheckedBy: data.last_checked_by,
   lastCheckedByAvatarUrl: data.last_checked_by_avatar_url,
   condition: data.condition,
   notes: data.notes,
@@ -65,7 +64,6 @@ const mapEquipmentToDB = (eq: Partial<Equipment>, vehicleId?: string) => ({
   required_quantity: eq.requiredQuantity,
   current_quantity: eq.currentQuantity,
   last_checked: eq.lastChecked,
-  last_checked_by: eq.lastCheckedBy,
   last_checked_by_avatar_url: eq.lastCheckedByAvatarUrl,
   condition: eq.condition,
   notes: eq.notes,
@@ -106,7 +104,7 @@ const mapVehicleFromDB = (data: any): Vehicle => ({
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [vehicles, setVehicles] = useState<Vehicle[]>(INITIAL_VEHICLES);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [isAddingVehicle, setIsAddingVehicle] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -199,49 +197,26 @@ const App: React.FC = () => {
 
   const fetchVehicles = async () => {
     try {
-      setLoading(true);
-      
-      // 1. Fetch all data in parallel to speed up loading
-      const [
-        { data: vehiclesData, error: vehiclesError },
-        { data: equipmentData, error: equipmentError },
-        { data: historyData, error: historyError }
-      ] = await Promise.all([
-        supabase.from(TABLES.VEHICLES).select('*').order('call_sign', { ascending: true }),
-        supabase.from(TABLES.EQUIPMENT).select('id, vehicle_id, last_checked, required_quantity, last_checked_by_avatar_url'),
-        supabase.from(TABLES.HISTORY)
-          .select('vehicle_id, date, performed_by, description')
-          .eq('type', 'status')
-          .order('date', { ascending: false })
-          .order('timestamp', { ascending: false })
-          .limit(1000)
-      ]);
+      // 1. Fetch Vehicles (Lightweight)
+      const { data: vehiclesData, error: vehiclesError } = await supabase
+        .from(TABLES.VEHICLES)
+        .select('*')
+        .order('call_sign', { ascending: true });
 
       if (vehiclesError) throw vehiclesError;
+
+      // 2. Fetch Equipment (LIGHTWEIGHT ONLY) to avoid timeout 57014 due to legacy Base64 data
+      // We exclude: manual_url, video_url, documents
+      const { data: equipmentData, error: equipmentError } = await supabase
+        .from(TABLES.EQUIPMENT)
+        .select('id, name, category, location, required_quantity, current_quantity, quantity, last_checked, last_checked_by_avatar_url, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id, thumbnail_url');
+
       if (equipmentError) throw equipmentError;
-
-      if (historyError) console.warn('Erreur chargement historique vérifications:', historyError);
-
-      // 2. Map History to Vehicles (Last verification only)
-      const lastVerifications: Record<string, { date: string, performedBy: string }> = {};
-      (historyData || []).forEach(entry => {
-        if (!lastVerifications[entry.vehicle_id] && entry.description?.toUpperCase().includes('VÉRIFICATION COMPLÈTE')) {
-          lastVerifications[entry.vehicle_id] = {
-            date: entry.date,
-            performedBy: entry.performed_by || ''
-          };
-        }
-      });
 
       // 3. Map Equipment to Vehicles in memory
       const equipmentByVehicle: Record<string, Equipment[]> = {};
       (equipmentData || []).forEach((item: any) => {
-        const eq = {
-          id: item.id,
-          lastChecked: item.last_checked,
-          requiredQuantity: item.required_quantity,
-          lastCheckedByAvatarUrl: item.last_checked_by_avatar_url
-        } as Equipment;
+        const eq = mapEquipmentFromDB(item);
         const vId = item.vehicle_id;
         if (!equipmentByVehicle[vId]) equipmentByVehicle[vId] = [];
         equipmentByVehicle[vId].push(eq);
@@ -251,7 +226,6 @@ const App: React.FC = () => {
         const vehicle = mapVehicleFromDB(v);
         vehicle.equipment = equipmentByVehicle[v.id] || [];
         vehicle.history = []; // History is loaded on demand
-        vehicle.lastVerification = lastVerifications[v.id];
         return vehicle;
       });
 
@@ -266,6 +240,11 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error('Erreur chargement engins:', err);
+      // Fallback to mock data if Supabase fails
+      if (vehicles.length === 0) {
+        console.log('Utilisation des données de secours (Mock Data)');
+        setVehicles(INITIAL_VEHICLES);
+      }
     } finally {
       setLoading(false);
     }
@@ -564,7 +543,7 @@ const App: React.FC = () => {
     return <Auth />;
   }
 
-  if (loading && vehicles.length === 0) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100">
         <div className="text-center">
