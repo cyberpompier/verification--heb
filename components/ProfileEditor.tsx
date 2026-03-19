@@ -57,7 +57,15 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ profile, onSave, onCancel
           <div className="flex flex-col items-center justify-center space-y-6 py-6 bg-slate-50 rounded-[32px] border-2 border-dashed border-slate-200">
             <div className="relative group">
               <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-2xl relative bg-slate-200">
-                <img src={formData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                {formData.avatarUrl ? (
+                  <img src={formData.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-slate-400">
+                    <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                    </svg>
+                  </div>
+                )}
                 <button 
                   type="button"
                   onClick={() => fileInputRef.current?.click()}

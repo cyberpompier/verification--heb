@@ -140,12 +140,13 @@ const App: React.FC = () => {
   }, []);
 
   const fetchProfile = async (userId: string) => {
+    console.log('[DEBUG] Début fetchProfile');
     const { data: { user } } = await supabase.auth.getUser();
     const userEmail = user?.email || '';
 
     const { data, error } = await supabase
       .from(TABLES.PROFILES)
-      .select('*')
+      .select('id, first_name, last_name, role, grade, assignment, avatar_url')
       .eq('id', userId)
       .single();
 
@@ -176,6 +177,7 @@ const App: React.FC = () => {
       setIsEditingProfile(true);
       setIsFirstConnection(true);
     }
+    console.log('[DEBUG] Fin fetchProfile');
     fetchVehicles();
   };
 
@@ -196,57 +198,70 @@ const App: React.FC = () => {
   };
 
   const fetchVehicles = async () => {
+    console.log('--- [DEBUG] Tentative de chargement ULTRA-MINIMAL ---');
     try {
-      // 1. Fetch Vehicles (Lightweight)
-      const { data: vehiclesData, error: vehiclesError } = await supabase
+      // 1. CHARGEMENT DES VÉHICULES (SANS IMAGE_URL car potentiellement trop lourd)
+      const { data: vData, error: vErr } = await supabase
         .from(TABLES.VEHICLES)
-        .select('*')
-        .order('call_sign', { ascending: true });
+        .select('id, call_sign, type, status, mileage, location, last_service, crew_capacity');
 
-      if (vehiclesError) throw vehiclesError;
+      if (vErr) {
+        console.error('[DEBUG] Échec chargement ultra-minimal:', vErr);
+        throw vErr;
+      }
 
-      // 2. Fetch Equipment (LIGHTWEIGHT ONLY) to avoid timeout 57014 due to legacy Base64 data
-      // We exclude: manual_url, video_url, documents
-      const { data: equipmentData, error: equipmentError } = await supabase
-        .from(TABLES.EQUIPMENT)
-        .select('id, name, category, location, required_quantity, current_quantity, quantity, last_checked, last_checked_by_avatar_url, condition, notes, anomaly, anomaly_tags, reported_by, vehicle_id, thumbnail_url');
-
-      if (equipmentError) throw equipmentError;
-
-      // 3. Map Equipment to Vehicles in memory
-      const equipmentByVehicle: Record<string, Equipment[]> = {};
-      (equipmentData || []).forEach((item: any) => {
-        const eq = mapEquipmentFromDB(item);
-        const vId = item.vehicle_id;
-        if (!equipmentByVehicle[vId]) equipmentByVehicle[vId] = [];
-        equipmentByVehicle[vId].push(eq);
-      });
-
-      const mappedVehicles = (vehiclesData || []).map((v: any) => {
+      const mappedVehicles = (vData || []).map((v: any) => {
         const vehicle = mapVehicleFromDB(v);
-        vehicle.equipment = equipmentByVehicle[v.id] || [];
-        vehicle.history = []; // History is loaded on demand
+        vehicle.equipment = []; 
+        vehicle.history = []; 
+        vehicle.imageUrl = ''; 
         return vehicle;
-      });
+      }).sort((a, b) => a.callSign.localeCompare(b.callSign));
 
       setVehicles(mappedVehicles);
-      
-      // If a vehicle is selected, refresh its details with FULL data (including images)
-      if (selectedVehicle) {
-        const updated = mappedVehicles.find(v => v.id === selectedVehicle.id);
-        if (updated) {
-            openVehicleDetails(updated, 'info', null);
-        }
-      }
+      setLoading(false);
+      console.log(`[DEBUG] ${mappedVehicles.length} véhicules chargés (sans images).`);
+
+      // 2. CHARGEMENT DIFFÉRÉ DES IMAGES ET DU MATÉRIEL
+      setTimeout(() => {
+        loadHeavyDataInBackground(mappedVehicles.map(v => v.id));
+      }, 500);
+
     } catch (err) {
-      console.error('Erreur chargement engins:', err);
-      // Fallback to mock data if Supabase fails
+      console.error('Erreur critique chargement:', err);
       if (vehicles.length === 0) {
-        console.log('Utilisation des données de secours (Mock Data)');
         setVehicles(INITIAL_VEHICLES);
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Chargement progressif des données lourdes (Images + Matériel)
+  const loadHeavyDataInBackground = async (ids: string[]) => {
+    for (const id of ids) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // Charger l'image et le matériel pour ce véhicule précis
+        const [imgRes, eqRes] = await Promise.all([
+          supabase.from(TABLES.VEHICLES).select('image_url').eq('id', id).single(),
+          supabase.from(TABLES.EQUIPMENT).select('id, name, category, location, required_quantity, current_quantity, quantity, condition, anomaly, anomaly_tags, vehicle_id').eq('vehicle_id', id)
+        ]);
+
+        setVehicles(prev => prev.map(v => {
+          if (v.id === id) {
+            return {
+              ...v,
+              imageUrl: imgRes.data?.image_url || v.imageUrl,
+              equipment: eqRes.data ? eqRes.data.map(mapEquipmentFromDB) : v.equipment
+            };
+          }
+          return v;
+        }));
+      } catch (e) {
+        console.warn(`[DEBUG] Erreur background pour ${id}`, e);
+      }
     }
   };
 
@@ -563,7 +578,15 @@ const App: React.FC = () => {
             className="flex items-center space-x-3 text-left active:scale-95 transition-transform"
           >
             <div className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden shadow-lg bg-white/10">
-              <img src={userProfile?.avatarUrl} alt="User" className="w-full h-full object-cover" />
+              {userProfile?.avatarUrl ? (
+                <img src={userProfile.avatarUrl} alt="User" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white/40">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                  </svg>
+                </div>
+              )}
             </div>
             <div className="flex flex-col">
               <h1 className="text-xl font-black tracking-tighter uppercase leading-none">FireTrack Pro</h1>
@@ -666,7 +689,7 @@ const App: React.FC = () => {
                       <div className="flex flex-col sm:flex-row">
                         {/* Photo Section */}
                         <div className="w-full sm:w-24 h-24 sm:h-auto bg-slate-100 relative overflow-hidden">
-                          {equipment.thumbnailUrl ? (
+                          {equipment.thumbnailUrl && equipment.thumbnailUrl.trim() !== "" ? (
                             <img 
                               src={equipment.thumbnailUrl} 
                               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 

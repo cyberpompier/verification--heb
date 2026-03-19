@@ -35,11 +35,19 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
     >
       {/* Image Container */}
       <div className="relative h-44 w-full overflow-hidden">
-        <img 
-          src={vehicle.imageUrl} 
-          alt={vehicle.callSign}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-        />
+        {vehicle.imageUrl ? (
+          <img 
+            src={vehicle.imageUrl} 
+            alt={vehicle.callSign}
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          />
+        ) : (
+          <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+            <svg className="w-12 h-12 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/10 to-transparent" />
         <div className="absolute bottom-4 left-5">
           <h3 className="text-2xl font-black text-white tracking-tight leading-none uppercase">
@@ -55,7 +63,7 @@ const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle, onSelect }) => {
             <div className="px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-xl shadow-lg animate-pulse border border-orange-400">
               Inventaire en cours
             </div>
-            {activeUserAvatar && (
+            {activeUserAvatar && activeUserAvatar.trim() !== "" && (
               <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-lg bg-white">
                 <img 
                   src={activeUserAvatar} 

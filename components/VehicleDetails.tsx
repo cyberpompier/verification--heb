@@ -532,7 +532,9 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
              {(editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl) ? (
                 <img src={editingEqId ? editEqForm.thumbnailUrl : newEq.thumbnailUrl} className={`w-full h-full object-cover ${isUploadingEqImage ? 'opacity-50' : ''}`} />
              ) : (
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5" /></svg>
+                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" strokeWidth="2.5" /></svg>
+                </div>
              )}
              {isUploadingEqImage && (
                 <div className="absolute inset-0 flex items-center justify-center">
@@ -703,7 +705,15 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         
         {/* Header Photo */}
         <div className="relative h-28 sm:h-40 flex-shrink-0 group">
-          <img src={vehicle.imageUrl} alt={vehicle.callSign} className="w-full h-full object-cover" />
+          {vehicle.imageUrl ? (
+            <img src={vehicle.imageUrl} alt={vehicle.callSign} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+              <svg className="w-12 h-12 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
           <div className="absolute bottom-3 left-5 text-white">
             <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-none uppercase">{vehicle.callSign}</h2>
@@ -714,7 +724,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
               <div className="px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse border border-orange-400">
                 Inventaire en cours
               </div>
-              {activeUserAvatar && (
+              {activeUserAvatar && activeUserAvatar.trim() !== "" && (
                 <div className="w-8 h-8 rounded-full border-2 border-white overflow-hidden shadow-lg bg-white">
                   <img 
                     src={activeUserAvatar} 
@@ -837,7 +847,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                     <div id={`eq-${item.id}`} key={item.id} className={`bg-white rounded-[28px] p-5 border-2 transition-all duration-300 shadow-md ${isOutOfStock ? 'opacity-40 grayscale border-slate-100 bg-slate-50/50' : hasAnomaly ? 'border-orange-400 ring-2 ring-orange-50' : 'border-slate-200'} ${isCheckedToday && !isOutOfStock ? 'opacity-80' : 'hover:border-red-300 active:shadow-lg'}`}>
                       <div className="flex items-start space-x-4">
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                          {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
+                          {item.thumbnailUrl && item.thumbnailUrl.trim() !== "" ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <svg className="w-8 h-8 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4" strokeWidth="2"/></svg>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex justify-between items-start">
@@ -994,7 +1004,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                               <div className="mb-4 rounded-2xl overflow-hidden shadow-lg border border-slate-200 bg-black aspect-video relative group">
                                 <iframe 
                                   className="absolute inset-0 w-full h-full"
-                                  src={getYoutubeEmbedUrl(item.videoUrl)!} 
+                                  src={getYoutubeEmbedUrl(item.videoUrl) || undefined} 
                                   title="Video"
                                   frameBorder="0" 
                                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
@@ -1124,7 +1134,7 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
                     .map(item => (
                       <div key={item.id} className="flex items-start space-x-3 p-3 bg-orange-50 rounded-2xl border border-orange-100">
                         <div className="w-10 h-10 rounded-xl bg-white flex-shrink-0 flex items-center justify-center border border-orange-200 overflow-hidden">
-                           {item.thumbnailUrl ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <span className="text-xs">⚠️</span>}
+                           {item.thumbnailUrl && item.thumbnailUrl.trim() !== "" ? <img src={item.thumbnailUrl} className="w-full h-full object-cover" /> : <span className="text-xs">⚠️</span>}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-black text-slate-900 uppercase truncate">{item.name}</p>
