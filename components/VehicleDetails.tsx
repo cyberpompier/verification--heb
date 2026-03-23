@@ -181,6 +181,10 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
     return sorted;
   }, [vehicle.history, historyFilter]);
 
+  const lastCompleteVerification = useMemo(() => {
+    return vehicle.history?.find(h => h.description.includes('VÉRIFICATION COMPLÈTE'));
+  }, [vehicle.history]);
+
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !newEq.name) return;
@@ -766,6 +770,18 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 bg-slate-100 pb-12">
           {activeTab === 'info' && (
             <div className="space-y-6 animate-fade-in">
+              {lastCompleteVerification && (
+                <section className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Dernière Vérification Complète</h4>
+                  <div className="flex flex-col space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900">{lastCompleteVerification.date} à {lastCompleteVerification.timestamp}</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-red-600 bg-red-50 px-2 py-1 rounded-full">{lastCompleteVerification.performedBy}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed">{lastCompleteVerification.description}</p>
+                  </div>
+                </section>
+              )}
               <section>
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Disponibilité Actuelle</h4>
                 <div className="grid grid-cols-2 gap-3">
