@@ -331,6 +331,39 @@ const App: React.FC = () => {
     }
   };
 
+  const handleResetVerification = async (vehicleId: string) => {
+    if (!canPerformChecks) return;
+
+    // 1. Optimistic Update
+    const updateLocalState = (prevVehicles: Vehicle[]) => prevVehicles.map(v => {
+      if (v.id === vehicleId) {
+        return {
+          ...v,
+          equipment: v.equipment.map(e => ({ ...e, lastChecked: '', lastCheckedByAvatarUrl: undefined }))
+        };
+      }
+      return v;
+    });
+
+    setVehicles(updateLocalState);
+    if (selectedVehicle?.id === vehicleId) {
+      setSelectedVehicle(prev => prev ? {
+        ...prev,
+        equipment: prev.equipment.map(e => ({ ...e, lastChecked: '', lastCheckedByAvatarUrl: undefined }))
+      } : null);
+    }
+
+    try {
+      const { error } = await supabase.from(TABLES.EQUIPMENT)
+        .update({ last_checked: null, last_checked_by_avatar_url: null })
+        .eq('vehicle_id', vehicleId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Erreur réinitialisation vérification:', err);
+      fetchVehicles(); // Rollback on error
+    }
+  };
+
   const handleUpdateEquipment = async (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => {
     if (!canPerformChecks) return;
 
@@ -790,6 +823,7 @@ const App: React.FC = () => {
           onAddEquipment={handleAddEquipment} 
           onRemoveEquipment={handleRemoveEquipment}
           onUpdateEquipment={handleUpdateEquipment} 
+          onResetVerification={handleResetVerification}
           onAddHistoryEntry={handleAddHistoryEntry} 
           currentUserAvatarUrl={userProfile?.avatarUrl}
           initialTab={initialDetailsTab}

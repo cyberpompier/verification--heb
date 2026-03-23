@@ -13,6 +13,7 @@ interface VehicleDetailsProps {
   onAddEquipment: (vehicleId: string, equipment: Equipment) => void;
   onRemoveEquipment: (vehicleId: string, equipmentId: string) => void;
   onUpdateEquipment: (vehicleId: string, equipmentId: string, updates: Partial<Equipment>) => void;
+  onResetVerification?: (vehicleId: string) => void;
   onAddHistoryEntry: (vehicleId: string, entry: Omit<HistoryEntry, 'id' | 'performedBy' | 'timestamp'>) => void;
   currentUserAvatarUrl?: string;
   initialTab?: 'info' | 'inventory' | 'history';
@@ -37,7 +38,7 @@ const Highlight: React.FC<{ text: string; search: string }> = ({ text, search })
 
 const VehicleDetails: React.FC<VehicleDetailsProps> = ({ 
   vehicle, onClose, currentUser, userRole, onUpdateStatus, onUpdateVehicleImage,
-  onAddEquipment, onRemoveEquipment, onUpdateEquipment, onAddHistoryEntry,
+  onAddEquipment, onRemoveEquipment, onUpdateEquipment, onResetVerification, onAddHistoryEntry,
   currentUserAvatarUrl, initialTab = 'info', highlightEquipmentId = null
 }) => {
   const [activeTab, setActiveTab] = useState<'info' | 'inventory' | 'history'>(initialTab);
@@ -723,6 +724,30 @@ const VehicleDetails: React.FC<VehicleDetailsProps> = ({
             <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-none uppercase">{vehicle.callSign}</h2>
             <p className="opacity-70 text-[9px] sm:text-xs font-black uppercase tracking-[0.2em] mt-1">{vehicle.type}</p>
           </div>
+          
+          {verifiedItems === totalItems && totalItems > 0 && canOperate && onResetVerification && (
+            <button 
+              onClick={() => {
+                setConfirmDialog({
+                  isOpen: true,
+                  title: 'Nouvelle vérification',
+                  message: 'Une vérification a déjà été effectuée aujourd\'hui. Voulez-vous vraiment réinitialiser l\'état de tous les équipements pour lancer une nouvelle vérification ?',
+                  confirmText: 'Oui, nouvelle vérification',
+                  cancelText: 'Annuler',
+                  isDestructive: false,
+                  onConfirm: () => {
+                    onResetVerification(vehicle.id);
+                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  }
+                });
+              }}
+              className="absolute top-14 right-3 px-3 py-1.5 bg-black/40 hover:bg-black/60 backdrop-blur-xl text-white text-[10px] font-black uppercase tracking-widest rounded-lg shadow-lg transition-all border border-white/20 flex items-center space-x-1.5 active:scale-95"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              <span className="hidden sm:inline">Nouvelle vérif.</span>
+            </button>
+          )}
+
           {verifiedItems > 0 && verifiedItems < totalItems && (
             <div className="absolute top-3 left-3 flex items-center space-x-2">
               <div className="px-3 py-1.5 bg-orange-500 text-white text-[9px] font-black uppercase tracking-widest rounded-full shadow-lg animate-pulse border border-orange-400">
